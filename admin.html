@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin de Pedidos - Pizzeria Nova</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="bg-gray-100">
+
+    <header class="bg-white shadow-md">
+        <div class="container mx-auto max-w-4xl p-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-900">🍕 Panel de Administración</h1>
+            <button id="btn-refresh" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+                Refrescar Pedidos
+            </button>
+        </div>
+    </header>
+
+    <main class="container mx-auto max-w-4xl p-4 mt-4">
+        <div id="loading-message" class="text-center p-8">
+            <p class="text-gray-600 text-lg">Cargando pedidos...</p>
+        </div>
+        <div id="error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+            <strong class="font-bold">Error:</strong>
+            <span id="error-text" class="block sm:inline"></span>
+        </div>
+        <div id="orders-container" class="hidden space-y-4">
+            <!-- Los pedidos se insertarán aquí dinámicamente -->
+        </div>
+    </main>
+
+    <script src="js/admin.js" type="module"></script>
+</body>
+</html>

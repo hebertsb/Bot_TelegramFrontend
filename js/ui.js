@@ -218,6 +218,7 @@ const categoriasConfig = {
 };
 
 export async function showCategoriesPage() {
+  alert("showCategoriesPage called");
   console.log("showCategoriesPage called");
   hideAllPages();
   mainHeader.classList.remove("hidden");

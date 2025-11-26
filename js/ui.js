@@ -218,7 +218,6 @@ const categoriasConfig = {
 };
 
 export async function showCategoriesPage() {
-  alert("showCategoriesPage called");
   console.log("showCategoriesPage called");
   hideAllPages();
   mainHeader.classList.remove("hidden");
@@ -240,7 +239,6 @@ export async function showCategoriesPage() {
   try {
     menu = await fetchProducts();
   } catch (e) {
-    alert(`Error cargando categorías: ${e.message}`);
     categoriesContainer.innerHTML = `<div class='col-span-2 text-center text-red-500'>Error cargando categorías: ${e.message}</div>`;
     return;
   }

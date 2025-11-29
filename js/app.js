@@ -881,6 +881,7 @@ function showOrderTicket(order, facturaUrl, onClose) {
   const html = `
     <h3 style="font-size:18px;margin-bottom:8px">Pedido Recibido</h3>
     <div style="margin-bottom:8px">Pedido: <strong>${order.id}</strong></div>
+    <div style="margin-bottom:8px">Cliente: ${order.customer_name || order.chat_id || 'Anónimo'}</div>
     <div style="margin-bottom:8px">Fecha: ${formatDateLocal(order.date)}</div>
     <div style="margin-bottom:8px">Dirección: ${order.address || ""}</div>
     ${etaHtml}
@@ -902,7 +903,16 @@ function showOrderTicket(order, facturaUrl, onClose) {
   const ov = createOverlay(html);
   ov.querySelector("#btn-open-factura").onclick = () => {
     try {
-      window.open(facturaUrl, "_blank");
+      // Añadir customer_name y chat_id como parámetros por si el backend los utiliza
+      try {
+        const nameParam = encodeURIComponent(order.customer_name || "");
+        const chatParam = encodeURIComponent(order.chat_id || "");
+        const sep = facturaUrl.includes("?") ? "&" : "?";
+        const urlWithParams = `${facturaUrl}${sep}customer_name=${nameParam}&chat_id=${chatParam}`;
+        window.open(urlWithParams, "_blank");
+      } catch (e) {
+        window.open(facturaUrl, "_blank");
+      }
     } catch (e) {
       console.log("Open factura", e);
     }

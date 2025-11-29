@@ -8,9 +8,20 @@ export async function fetchProducts() {
   const response = await fetch(url);
 
   if (!response.ok) {
-
-    throw new Error("No se pudo obtener el menú del backend");
+    const text = await response.text().catch(() => null);
+    throw new Error(
+      `Backend responded ${response.status}: ${
+        text ? text.slice(0, 200) : response.statusText
+      }`
+    );
   }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Expected JSON but received: ${text.slice(0, 200)}`);
+  }
+
   const data = await response.json();
 
   // Mapeo: convierte claves a formato amigable si es necesario

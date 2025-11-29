@@ -19,27 +19,54 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
     "bg-white rounded-lg shadow-lg p-6 max-w-md w-full animate-fade-in";
 
   modal.innerHTML = `
-    <h3 class="text-lg font-bold mb-2 text-green-700">✅ ${productoBase.name} agregada</h3>
+    <h3 class="text-lg font-bold mb-2 text-green-700">✅ ${
+      productoBase.name
+    } agregada</h3>
     <div class="mb-4">
       <h4 class="font-semibold mb-1">¿Quieres personalizarla?</h4>
       <div class="grid grid-cols-1 gap-2">
-        ${(menuCache.adicionales || []).map((adic) => `
+        ${(menuCache.adicionales || [])
+          .map(
+            (adic) => `
           <label class="flex items-center space-x-2">
-            <input type="checkbox" class="sug-adic" value="${adic.id}" data-name="${adic.name}" data-price="${adic.price}" data-emoji="${adic.emoji || ""}" data-cat="adicional">
-            <span>${adic.emoji || ""} ${adic.name} <span class="text-xs text-gray-500">(+Bs ${adic.price})</span></span>
-          </label>
-        `).join("")}
+            <input type="checkbox" class="sug-adic" value="${
+              adic.id
+            }" data-name="${adic.name}" data-price="${
+              adic.price
+            }" data-emoji="${adic.emoji || ""}" data-cat="adicional">
+            <span>${adic.emoji || ""} ${
+              adic.name
+            } <span class="text-xs text-gray-500">(+Bs ${
+              adic.price
+            })</span></span>
+      let GLOBAL_TRACKING_INTERVAL = null;
+      let GLOBAL_LAST_ORDER_STATUS = null;
+          )
+          .join("")}
       </div>
     </div>
     <div class="mb-4">
       <h4 class="font-semibold mb-1">¿Agregar bebida?</h4>
       <div class="grid grid-cols-1 gap-2">
-        ${(menuCache.bebidas || []).slice(0, 3).map((beb) => `
+        ${(menuCache.bebidas || [])
+          .slice(0, 3)
+          .map(
+            (beb) => `
           <label class="flex items-center space-x-2">
-            <input type="checkbox" class="sug-beb" value="${beb.id}" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${beb.emoji || ""}" data-cat="bebida">
-            <span>${beb.emoji || ""} ${beb.name} <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
+            <input type="checkbox" class="sug-beb" value="${
+              beb.id
+            }" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${
+              beb.emoji || ""
+            }" data-cat="bebida">
+            <span>${beb.emoji || ""} ${
+              beb.name
+            } <span class="text-xs text-gray-500">(+Bs ${
+              beb.price
+            })</span></span>
           </label>
-        `).join("")}
+        `
+          )
+          .join("")}
       </div>
     </div>
     <div class="flex justify-end gap-2">
@@ -159,9 +186,9 @@ console.log("tg in ui:", tg);
 import { cart, myOrders, currentRating } from "./state.js";
 
 // Helpers para compatibilidad entre versiones y mocks
-const MB = (tg && (tg.MainButton || tg.mainButton || tg.main_button || null));
-const BB = (tg && (tg.BackButton || tg.backButton || tg.back_button || null));
-const HF = (tg && (tg.HapticFeedback || tg.hapticFeedback || null));
+const MB = tg && (tg.MainButton || tg.mainButton || tg.main_button || null);
+const BB = tg && (tg.BackButton || tg.backButton || tg.back_button || null);
+const HF = tg && (tg.HapticFeedback || tg.hapticFeedback || null);
 
 // --- Floating cart badge + UI update ---
 function ensureFloatingCart() {
@@ -195,7 +222,9 @@ export function updateCartUI() {
   // Mostrar el carrito flotante solo cuando el usuario está seleccionando productos
   const showFloating = !pageCart.classList.contains("hidden")
     ? false
-    : (!pageCategories.classList.contains("hidden") || !pageProducts.classList.contains("hidden") || !pageCustomPizza.classList.contains("hidden"));
+    : !pageCategories.classList.contains("hidden") ||
+      !pageProducts.classList.contains("hidden") ||
+      !pageCustomPizza.classList.contains("hidden");
   el.style.display = showFloating ? "flex" : "none";
 
   // Si la página del carrito está visible, renderizar contenido del carrito
@@ -212,11 +241,21 @@ export function updateCartUI() {
       itemEl.className =
         "cart-item flex items-center justify-between p-3 bg-white rounded-lg mb-3";
       // Mostrar addons si existen
-      const addonsHTML = (item.addons && item.addons.length > 0)
-        ? `<div class="text-sm text-gray-500 mt-1">
-              ${item.addons.map(a=>`<div class="flex items-center gap-2"><span class="text-xs">${a.emoji||''}</span><span>${a.name} (+Bs ${a.price.toFixed(2)})</span></div>`).join('')}
+      const addonsHTML =
+        item.addons && item.addons.length > 0
+          ? `<div class="text-sm text-gray-500 mt-1">
+              ${item.addons
+                .map(
+                  (a) =>
+                    `<div class="flex items-center gap-2"><span class="text-xs">${
+                      a.emoji || ""
+                    }</span><span>${a.name} (+Bs ${a.price.toFixed(
+                      2
+                    )})</span></div>`
+                )
+                .join("")}
            </div>`
-        : "";
+          : "";
       itemEl.innerHTML = `
         <div class="flex items-center gap-3">
           <div class="w-12 h-12 rounded bg-gray-100 flex items-center justify-center">${
@@ -257,6 +296,9 @@ export function hideAllPages() {
   pageRateDriver.classList.add("hidden");
   if (MB && typeof MB.hide === "function") MB.hide();
   if (BB && typeof BB.hide === "function") BB.hide();
+  // Ocultar botón fallback si existe
+  const fb = document.getElementById("fallback-pay-button");
+  if (fb) fb.style.display = "none";
 }
 
 export function showWelcomePage() {
@@ -418,6 +460,48 @@ export function showCartPage() {
   if (HF && typeof HF.impactOccurred === "function") HF.impactOccurred("light");
   // Actualizar el carrito en la UI
   if (typeof updateCartUI === "function") updateCartUI();
+
+  // Si no hay MainButton disponible (o la versión no la soporta), mostrar botón fallback en la página
+  let fb = document.getElementById("fallback-pay-button");
+  if (!fb) {
+    fb = document.createElement("button");
+    fb.id = "fallback-pay-button";
+    fb.textContent = "Pagar";
+    fb.style.position = "fixed";
+    fb.style.left = "50%";
+    fb.style.transform = "translateX(-50%)";
+    fb.style.bottom = "18px";
+    fb.style.zIndex = "70";
+    fb.style.background = "#2481cc";
+    fb.style.color = "#fff";
+    fb.style.border = "none";
+    fb.style.padding = "12px 20px";
+    fb.style.borderRadius = "999px";
+    fb.style.boxShadow = "0 8px 24px rgba(36,129,204,0.2)";
+    fb.style.fontWeight = "700";
+    fb.style.cursor = "pointer";
+    fb.onclick = () => {
+      try {
+        showPaymentMethodPage();
+      } catch (e) {
+        console.error("fallback pay click error", e);
+      }
+    };
+    document.body.appendChild(fb);
+  }
+
+  // Mostrar fallback cuando:
+  // - no exista MainButton compatible, OR
+  // - estemos en `localhost` (pruebas locales), OR
+  // - se pase el parámetro `?force_fallback=1` en la URL para forzar pruebas
+  const urlParams = new URL(window.location.href).searchParams;
+  const forceFallback = urlParams.get("force_fallback") === "1";
+  const runningLocally =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1";
+  const shouldShowFallback =
+    forceFallback || runningLocally || !(MB && typeof MB.show === "function");
+  fb.style.display = shouldShowFallback ? "block" : "none";
 }
 
 export function showPaymentMethodPage() {
@@ -427,6 +511,10 @@ export function showPaymentMethodPage() {
   if (BB && typeof BB.show === "function") BB.show();
   if (BB && typeof BB.onClick === "function") BB.onClick(showCartPage);
   if (HF && typeof HF.impactOccurred === "function") HF.impactOccurred("light");
+
+  // Asegurar que el botón fallback no esté visible en la pantalla de pago
+  const fb = document.getElementById("fallback-pay-button");
+  if (fb) fb.style.display = "none";
 }
 
 export async function showMyOrdersPage() {
@@ -490,17 +578,19 @@ export async function showMyOrdersPage() {
 import { BACKEND_URL } from "./config.js";
 
 export async function showOrderTrackingPage(orderId) {
+  console.log("showOrderTrackingPage init", orderId);
   hideAllPages();
   pageOrderTracking.classList.remove("hidden");
   if (MB && typeof MB.hide === "function") MB.hide();
   if (BB && typeof BB.show === "function") BB.show();
-  if (BB && typeof BB.onClick === "function") BB.onClick(() => {
-    if (trackingInterval) {
-      clearInterval(trackingInterval);
-      trackingInterval = null;
-    }
-    showMyOrdersPage();
-  });
+  if (BB && typeof BB.onClick === "function")
+    BB.onClick(() => {
+      if (trackingInterval) {
+        clearInterval(trackingInterval);
+        trackingInterval = null;
+      }
+      showMyOrdersPage();
+    });
 
   // Función interna para refrescar el estado
   // Variable global para el intervalo de refresco y estado anterior
@@ -525,11 +615,13 @@ export async function showOrderTrackingPage(orderId) {
   }
 
   async function refreshTracking() {
+    console.log("refreshTracking running for", orderId);
     try {
       const response = await fetch(`${BACKEND_URL}/get_orders`);
       if (!response.ok) throw new Error("No se pudo obtener pedidos");
       const allOrders = await response.json();
       order = allOrders.find((o) => String(o.id) === String(orderId));
+      console.log("refreshTracking fetched order:", order);
     } catch (e) {
       order = null;
     }
@@ -541,6 +633,100 @@ export async function showOrderTrackingPage(orderId) {
 
     trackingOrderId.textContent = `Pedido #${order.id}`;
     btnRateOrder.dataset.orderId = order.id;
+    // Crear/actualizar stepper de progreso
+    try {
+      let prog = document.getElementById("order-progress");
+      if (!prog) {
+        prog = document.createElement("div");
+        prog.id = "order-progress";
+        prog.style.padding = "12px";
+        prog.style.display = "flex";
+        prog.style.flexDirection = "column";
+        prog.style.gap = "8px";
+        pageOrderTracking.appendChild(prog);
+      }
+      const steps = ["Confirmado", "En preparación", "En camino", "Entregado"];
+      const status = order.status || "Pendiente";
+      prog.innerHTML = steps
+        .map((s, idx) => {
+          const statusIndex = steps.indexOf(status);
+          const stepIndex = idx;
+          const done = statusIndex > stepIndex || s === status;
+          const active = s === status;
+          const circleBg = done ? "#10b981" : "#e5e7eb";
+          const circleContent = done ? "✓" : String(idx + 1);
+          const ring = done
+            ? `box-shadow: 0 0 0 ${active ? 8 : 5}px rgba(16,185,129,${
+                active ? 0.26 : 0.18
+              });`
+            : "";
+          return `<div class="order-step" data-step="${s}" style="display:flex;align-items:center;gap:12px;padding:8px 0"><div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;${ring}"><div style="width:28px;height:28px;border-radius:50%;background:${circleBg};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${circleContent}</div></div><div style="flex:1"><div style="font-weight:${
+            active ? "700" : "500"
+          }">${s}</div><div style="font-size:12px;color:#6b7280">${
+            idx === 0
+              ? "Hemos recibido tu pedido."
+              : idx === 1
+              ? "Tu pizza ya está en el horno."
+              : idx === 2
+              ? "El driver está en camino a tu dirección."
+              : "¡Disfruta tu comida!"
+          }</div></div></div>`;
+        })
+        .join("");
+
+      // Si el status es 'En camino', iniciar animación del repartidor
+      if (
+        String(status).toLowerCase() === "en camino" ||
+        String(status).toLowerCase() === "en_camino" ||
+        String(status).toLowerCase() === "encamino"
+      ) {
+        try {
+          if (window.startDeliveryAnimation) {
+            window.startDeliveryAnimation(order);
+          }
+        } catch (e) {
+          console.warn("startDeliveryAnimation failed", e);
+        }
+      }
+      // Si entregado, parar animación
+      if (String(status).toLowerCase() === "entregado") {
+        try {
+          if (window.stopDeliveryAnimation) window.stopDeliveryAnimation();
+        } catch (e) {}
+      }
+      // Mostrar pequeño banner/tick cuando el estado cambie
+      if (lastOrderStatus && lastOrderStatus !== status) {
+        showStatusBanner(`Estado actualizado: ${status}`, "bg-green-600");
+      }
+      lastOrderStatus = status;
+    } catch (e) {
+      console.warn("update progress failed", e);
+    }
+  }
+  // Ejecutar inmediatamente y luego iniciar intervalo de polling cada 10s
+  try {
+    await refreshTracking();
+    if (!trackingInterval)
+      trackingInterval = setInterval(refreshTracking, 10000);
+    // Intentar mostrar mapa usando la función expuesta por app.js si existe
+    try {
+      if (
+        window.showTrackingMap &&
+        typeof window.showTrackingMap === "function"
+      ) {
+        // pasar el pedido actual (si está disponible)
+        const response = await fetch(`${BACKEND_URL}/get_orders`);
+        if (response.ok) {
+          const all = await response.json();
+          const ord = all.find((o) => String(o.id) === String(orderId));
+          if (ord) window.showTrackingMap(ord);
+        }
+      }
+    } catch (e) {
+      /* noop */
+    }
+  } catch (e) {
+    console.warn("init tracking failed", e);
   }
 }
 

@@ -27,6 +27,25 @@ import {
 let trackingMap = null;
 let trackingClientMarker = null;
 let trackingDeliveryMarker = null;
+let trackingRiderMarker = null; // marcador animado del repartidor
+// Ubicación fija del restaurante (Plaza 24 de Septiembre, Santa Cruz - usada por el backend)
+const RESTAURANT_LOCATION = {
+  latitude: -17.7832662,
+  longitude: -63.1820985,
+  name: "Plaza 24 de Septiembre",
+};
+// Versión ligeramente desplazada para que el icono del restaurante quede en una calle lateral
+const RESTAURANT_MAP_LOCATION = {
+  latitude: RESTAURANT_LOCATION.latitude - 0.00035,
+  longitude: RESTAURANT_LOCATION.longitude + 0.0006,
+};
+// Iconos embebidos (data URIs) para evitar dependencias externas en despliegues
+const CLIENT_ICON_URI =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M16 2a8 8 0 100 16 8 8 0 000-16z' fill='%233b82f6'/><path d='M16 18c-4 0-8 6-8 8h16c0-2-4-8-8-8z' fill='%233b82f6'/></svg>";
+const REST_ICON_URI =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 32 32'><circle cx='16' cy='12' r='8' fill='%23f97316'/><path d='M16 20c-3 0-6 4-6 6h12c0-2-3-6-6-6z' fill='%23f97316'/></svg>";
+const RIDER_ICON_URI =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 32 32'><rect x='6' y='12' width='20' height='8' rx='2' fill='%2310b981'/><circle cx='10' cy='22' r='3' fill='%23000'/><circle cx='22' cy='22' r='3' fill='%23000'/></svg>";
 import {
   pageWelcome,
   mainHeader,
@@ -69,8 +88,38 @@ import {
 
 import { fetchProducts } from "./data.js";
 // --- Tracking map DOM y función ---
-const trackingMapDiv = document.getElementById("tracking-map");
+let trackingMapDiv = document.getElementById("tracking-map");
 function showTrackingMap(order) {
+  console.log("showTrackingMap called", order && order.id);
+  // Asegurar que el contenedor exista; si no, crearlo dentro de la página de tracking
+  if (!trackingMapDiv) {
+    const trackingContainer = document.getElementById("page-order-tracking");
+    if (trackingContainer) {
+      const div = document.createElement("div");
+      div.id = "tracking-map";
+      div.style.height = "250px";
+      div.style.width = "100%";
+      div.className = "rounded mb-4";
+      // Insertar al inicio de la página de tracking (encima del stepper)
+      try {
+        trackingContainer.insertBefore(div, trackingContainer.firstChild);
+      } catch (e) {
+        const firstChild = trackingContainer.querySelector(".mb-6");
+        if (firstChild && firstChild.parentNode)
+          firstChild.parentNode.insertBefore(div, firstChild.nextSibling);
+      }
+      // actualizar referencia
+      try {
+        trackingMapDiv = document.getElementById("tracking-map");
+      } catch (e) {
+        console.warn("no trackingMapDiv");
+      }
+    } else {
+      console.warn(
+        "No se encontró page-order-tracking para crear tracking-map"
+      );
+    }
+  }
   if (!trackingMapDiv) return;
   // Solo inicializar una vez
   if (!trackingMap) {
@@ -79,7 +128,12 @@ function showTrackingMap(order) {
       attribution: "© OpenStreetMap",
     }).addTo(trackingMap);
   } else {
-    trackingMap.invalidateSize();
+    // forzar resize tras renderizar la vista
+    setTimeout(() => {
+      try {
+        trackingMap.invalidateSize();
+      } catch (e) {}
+    }, 250);
   }
   // Limpiar marcadores previos
   if (trackingClientMarker) {
@@ -97,7 +151,7 @@ function showTrackingMap(order) {
       [order.location.latitude, order.location.longitude],
       {
         icon: L.icon({
-          iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+          iconUrl: CLIENT_ICON_URI,
           iconSize: [32, 32],
           iconAnchor: [16, 32],
         }),
@@ -114,9 +168,17 @@ function showTrackingMap(order) {
   // (En el futuro: agregar marker del delivery aquí)
 }
 
+// Hacer accesible la función de renderizado del mapa desde el window (UI la invoca)
+try {
+  window.showTrackingMap = showTrackingMap;
+} catch (e) {
+  /* noop */
+}
+
 // --- Leaflet Map Variables ---
 let leafletMap = null;
 let leafletMarker = null;
+let leafletRestaurantMarker = null;
 const mapModal = document.getElementById("map-modal");
 const closeMapModal = document.getElementById("close-map-modal");
 const saveLocationBtn = document.getElementById("save-location");
@@ -125,6 +187,8 @@ const saveLocationBtn = document.getElementById("save-location");
 
 // --- Cargar/Guardar Pedidos (Persistencia) ---
 function saveOrdersToStorage() {
+  // Preparar referencia al MainButton (si existe) fuera del try/finally
+  let mb = tg.mainButton || tg.MainButton || null;
   try {
     localStorage.setItem("myOrders", JSON.stringify(myOrders));
   } catch (e) {
@@ -144,8 +208,9 @@ async function loadOrdersFromBackend() {
         : null;
     const chatId = window.userChatId || userChatId || chatIdFromWebApp;
     if (!chatId) {
-      console.warn("No chat_id available; skipping loadOrdersFromBackend");
-      myOrders.splice(0, myOrders.length);
+      console.warn(
+        "No chat_id available; skipping loadOrdersFromBackend (will keep local orders if any)"
+      );
       return;
     }
 
@@ -268,8 +333,10 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
   };
 
   // --- INICIO CAMBIO NOTIFICACIONES (Sugerencias 2, 3, 4) ---
+  // Referencia segura al MainButton (si existe)
+  let mb = (tg && (tg.mainButton || tg.MainButton)) || null;
   try {
-    const mb = tg.mainButton || tg.MainButton || null;
+    // mb declarado fuera del bloque try/finally para que esté disponible en finally
     if (mb && typeof mb.showProgress === "function") mb.showProgress(true);
 
     // Determinar chat_id prioritizando window.userChatId, luego importado, luego initDataUnsafe
@@ -280,7 +347,24 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
       tg.initDataUnsafe.user.id
         ? tg.initDataUnsafe.user.id
         : null;
-    const chat_id = window.userChatId || userChatId || chatIdFromWebApp;
+    let chat_id = window.userChatId || userChatId || chatIdFromWebApp;
+    // Si no hay chat_id y estamos en localhost (pruebas), usar un valor por defecto
+    const runningLocally =
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+    const forceFallback =
+      new URL(window.location.href).searchParams.get("force_fallback") === "1";
+    if (!chat_id && (runningLocally || forceFallback)) {
+      console.warn(
+        "No chat_id disponible: usando chat_id de prueba 'LOCAL_TEST' para ambiente local"
+      );
+      chat_id = "LOCAL_TEST";
+      try {
+        window.userChatId = chat_id;
+      } catch (e) {
+        /* noop */
+      }
+    }
 
     // Adjuntar detalles de pago si existen (ej. tarjeta enmascarada)
     if (paymentDetails) {
@@ -314,8 +398,26 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
       result && result.order_id ? result.order_id : newOrder.id;
     newOrder.id = returnedId;
 
+    // Iniciar polling de estado por 30s (actualiza backend y UI)
+    try {
+      pollOrderStatus(returnedId, 30000, 5000).catch((e) =>
+        console.warn("pollOrderStatus error:", e)
+      );
+    } catch (e) {
+      console.warn("No se pudo iniciar polling:", e);
+    }
+
     myOrders.push(newOrder);
     saveOrdersToStorage();
+
+    // En entorno local/forzado, navegar a Mis pedidos inmediatamente para pruebas
+    try {
+      if (runningLocally || forceFallback) {
+        if (typeof showMyOrdersPage === "function") showMyOrdersPage();
+      }
+    } catch (e) {
+      /* noop */
+    }
 
     // Vaciar el carrito correctamente (no reasignar la variable importada)
     if (Array.isArray(cart)) cart.splice(0, cart.length);
@@ -360,6 +462,310 @@ function createOverlay(html) {
   `;
   document.body.appendChild(overlay);
   return overlay;
+}
+
+// Poll an order state from backend for a limited time and update UI
+async function pollOrderStatus(orderId, durationMs = 30000, intervalMs = 5000) {
+  if (!orderId) return;
+  const endAt = Date.now() + durationMs;
+  let lastStatus = null;
+
+  // show a temporary banner while polling
+  function showTempBanner(msg) {
+    let b = document.getElementById("order-poll-banner");
+    if (!b) {
+      b = document.createElement("div");
+      b.id = "order-poll-banner";
+      b.className =
+        "fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg text-white font-semibold shadow-lg";
+      b.style.background = "#2563eb";
+      document.body.appendChild(b);
+    }
+    b.textContent = msg;
+    b.style.opacity = "1";
+  }
+
+  try {
+    showTempBanner("Buscando actualizaciones del pedido...");
+    while (Date.now() < endAt) {
+      try {
+        const resp = await fetch(
+          `${BACKEND_URL}/get_order/${encodeURIComponent(orderId)}`
+        );
+        if (resp.ok) {
+          const order = await resp.json();
+          if (order && order.status && order.status !== lastStatus) {
+            lastStatus = order.status;
+            // actualizar myOrders en memoria
+            const idx = myOrders.findIndex(
+              (o) => String(o.id) === String(orderId)
+            );
+            if (idx >= 0) {
+              myOrders[idx] = order;
+            } else {
+              myOrders.push(order);
+            }
+            try {
+              // Mostrar ubicación del restaurante (fija)
+              try {
+                const restLatLng = [
+                  RESTAURANT_MAP_LOCATION.latitude,
+                  RESTAURANT_MAP_LOCATION.longitude,
+                ];
+                // asegurar icono y actualizar
+                const restIcon = L.icon({
+                  iconUrl: REST_ICON_URI,
+                  iconSize: [28, 28],
+                  iconAnchor: [14, 28],
+                });
+                if (!trackingDeliveryMarker) {
+                  trackingDeliveryMarker = L.marker(restLatLng, {
+                    icon: restIcon,
+                  })
+                    .addTo(trackingMap)
+                    .bindPopup(`${RESTAURANT_LOCATION.name}`);
+                  try {
+                    trackingDeliveryMarker.openPopup();
+                  } catch (e) {}
+                } else {
+                  try {
+                    trackingDeliveryMarker.setLatLng(restLatLng);
+                    trackingDeliveryMarker.setIcon(restIcon);
+                  } catch (e) {}
+                }
+
+                // Si tenemos cliente, dibujar línea entre restaurante y cliente
+                if (trackingClientMarker) {
+                  try {
+                    // eliminar polylines previas
+                    if (trackingMap._routeLine) {
+                      trackingMap.removeLayer(trackingMap._routeLine);
+                      trackingMap._routeLine = null;
+                    }
+                    const clientLatLng = trackingClientMarker.getLatLng();
+                    const poly = L.polyline(
+                      [restLatLng, [clientLatLng.lat, clientLatLng.lng]],
+                      { color: "#2563eb", dashArray: "6,6" }
+                    ).addTo(trackingMap);
+                    trackingMap._routeLine = poly;
+                  } catch (e) {
+                    /* noop */
+                  }
+                }
+                // Mostrar distancia y ETA en un pequeño control si hay cliente
+                try {
+                  if (order && order.location) {
+                    const dkm = computeDistanceKm(
+                      RESTAURANT_LOCATION.latitude,
+                      RESTAURANT_LOCATION.longitude,
+                      order.location.latitude,
+                      order.location.longitude
+                    );
+                    const etaMin = estimateTotalMinutes(
+                      dkm,
+                      (order.items || []).length
+                    );
+                    const ctrlId = "tracking-eta-box";
+                    let ctrl = document.getElementById(ctrlId);
+                    if (!ctrl) {
+                      ctrl = document.createElement("div");
+                      ctrl.id = ctrlId;
+                      ctrl.style.position = "absolute";
+                      ctrl.style.left = "12px";
+                      ctrl.style.top = "12px";
+                      ctrl.style.zIndex = "80";
+                      ctrl.style.background = "rgba(255,255,255,0.95)";
+                      ctrl.style.padding = "8px 10px";
+                      ctrl.style.borderRadius = "8px";
+                      ctrl.style.boxShadow = "0 6px 18px rgba(0,0,0,0.08)";
+                      ctrl.style.fontSize = "13px";
+                      trackingMapDiv.appendChild(ctrl);
+                    }
+                    ctrl.innerHTML = `Distancia: ${dkm.toFixed(
+                      2
+                    )} km<br/>ETA aprox: ${Math.round(
+                      etaMin
+                    )} min (~${Math.round(etaMin)} s demo)`;
+                  }
+                } catch (e) {
+                  /* noop */
+                }
+              } catch (e) {
+                console.warn("Error mostrando marcador restaurante:", e);
+              }
+              saveOrdersToStorage();
+
+              // Helpers para distancia y ETA
+              function computeDistanceKm(lat1, lon1, lat2, lon2) {
+                // Haversine
+                const toRad = (v) => (v * Math.PI) / 180;
+                const R = 6371; // km
+                const dLat = toRad(lat2 - lat1);
+                const dLon = toRad(lon2 - lon1);
+                const a =
+                  Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(toRad(lat1)) *
+                    Math.cos(toRad(lat2)) *
+                    Math.sin(dLon / 2) *
+                    Math.sin(dLon / 2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                return R * c;
+              }
+
+              function estimateTotalMinutes(distanceKm, itemsCount) {
+                const kitchenBase = 15; // minutos base
+                const kitchenPerItem = 2; // minutos por ítem extra
+                const kitchen =
+                  kitchenBase + Math.max(0, itemsCount - 1) * kitchenPerItem;
+                const travelMinutes = distanceKm * 2; // a 30 km/h => 2 min por km
+                return kitchen + travelMinutes;
+              }
+
+              // Animar el marcador del repartidor desde restaurante hasta cliente en tiempo simulado
+              function startDeliveryAnimation(order, options = {}) {
+                try {
+                  if (!order || !order.location) return;
+                  const clientLat = order.location.latitude;
+                  const clientLon = order.location.longitude;
+                  const rest = [
+                    RESTAURANT_MAP_LOCATION.latitude,
+                    RESTAURANT_MAP_LOCATION.longitude,
+                  ];
+                  const client = [clientLat, clientLon];
+                  const dkm = computeDistanceKm(
+                    RESTAURANT_MAP_LOCATION.latitude,
+                    RESTAURANT_MAP_LOCATION.longitude,
+                    clientLat,
+                    clientLon
+                  );
+                  const etaMin = estimateTotalMinutes(
+                    dkm,
+                    (order.items || []).length
+                  );
+                  // demo: 1 min real = 1 s demo
+                  const durationSec = Math.max(5, Math.round(etaMin));
+                  const durationMs = durationSec * 1000;
+
+                  if (!trackingMap) showTrackingMap(order);
+
+                  // crear el marcador del repartidor si no existe
+                  const riderIcon = L.icon({
+                    iconUrl: RIDER_ICON_URI,
+                    iconSize: [36, 36],
+                    iconAnchor: [18, 18],
+                  });
+                  if (!trackingRiderMarker) {
+                    trackingRiderMarker = L.marker(rest, { icon: riderIcon })
+                      .addTo(trackingMap)
+                      .bindPopup("Repartidor");
+                  } else {
+                    trackingRiderMarker.setLatLng(rest);
+                    trackingRiderMarker.setIcon(riderIcon);
+                  }
+
+                  // animación simple: interpolar lat/lon en tiempo
+                  const start = performance.now();
+                  const startLat = rest[0],
+                    startLon = rest[1];
+                  const endLat = client[0],
+                    endLon = client[1];
+                  let rafId = null;
+                  function step(ts) {
+                    const t = Math.min(1, (ts - start) / durationMs);
+                    const curLat = startLat + (endLat - startLat) * t;
+                    const curLon = startLon + (endLon - startLon) * t;
+                    try {
+                      trackingRiderMarker.setLatLng([curLat, curLon]);
+                    } catch (e) {}
+                    if (t < 1) {
+                      rafId = requestAnimationFrame(step);
+                    } else {
+                      // Al terminar, colocar el repartidor en la ubicación del cliente
+                      try {
+                        trackingRiderMarker.setLatLng([endLat, endLon]);
+                      } catch (e) {}
+                    }
+                  }
+                  // Cancel previous animation if any
+                  if (trackingMap && trackingMap._routeRider) {
+                    try {
+                      cancelAnimationFrame(trackingMap._routeRider);
+                    } catch (e) {}
+                    trackingMap._routeRider = null;
+                  }
+                  trackingMap._routeRider = requestAnimationFrame(step);
+                  // Guardar referencia para poder cancelarla
+                  trackingMap._riderStop = () => {
+                    if (trackingMap && trackingMap._routeRider) {
+                      try {
+                        cancelAnimationFrame(trackingMap._routeRider);
+                      } catch (e) {}
+                      trackingMap._routeRider = null;
+                    }
+                  };
+                  return { durationSec };
+                } catch (e) {
+                  console.warn("startDeliveryAnimation error", e);
+                  return null;
+                }
+              }
+
+              function stopDeliveryAnimation() {
+                try {
+                  if (trackingMap && trackingMap._riderStop)
+                    trackingMap._riderStop();
+                  if (trackingRiderMarker) {
+                    try {
+                      trackingMap.removeLayer(trackingRiderMarker);
+                    } catch (e) {}
+                    trackingRiderMarker = null;
+                  }
+                } catch (e) {}
+              }
+
+              // Exponer a window para que ui.js pueda invocarlo
+              window.startDeliveryAnimation = startDeliveryAnimation;
+              window.stopDeliveryAnimation = stopDeliveryAnimation;
+            } catch (e) {
+              /* noop */
+            }
+            // Mostrar el estado textual en el banner mientras hacemos polling
+            try {
+              showTempBanner(`Estado: ${order.status}`);
+            } catch (e) {
+              /* noop */
+            }
+            // Si el usuario está en la vista Mis pedidos, refrescarla
+            try {
+              if (
+                !pageMyOrders.classList.contains("hidden") &&
+                typeof showMyOrdersPage === "function"
+              ) {
+                showMyOrdersPage();
+              }
+            } catch (e) {
+              /* noop */
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("pollOrderStatus fetch error:", e);
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  } finally {
+    // hide banner and navigate to Mis pedidos
+    const b = document.getElementById("order-poll-banner");
+    if (b) {
+      b.style.opacity = "0";
+      setTimeout(() => b.remove(), 400);
+    }
+    try {
+      if (typeof showMyOrdersPage === "function") showMyOrdersPage();
+    } catch (e) {
+      console.warn("No se pudo mostrar Mis pedidos automáticamente:", e);
+    }
+  }
 }
 
 function showCashConfirmation(onConfirm) {
@@ -441,20 +847,47 @@ function showOrderTicket(order, facturaUrl, onClose) {
     })
     .join("");
 
+  // Calcular ETA aproximado si hay coordenadas en el pedido
+  let etaHtml = "";
+  try {
+    if (
+      order &&
+      order.location &&
+      order.location.latitude &&
+      order.location.longitude
+    ) {
+      const dkm = computeDistanceKm(
+        RESTAURANT_LOCATION.latitude,
+        RESTAURANT_LOCATION.longitude,
+        order.location.latitude,
+        order.location.longitude
+      );
+      const etaMin = estimateTotalMinutes(dkm, (order.items || []).length);
+      etaHtml = `<div style="margin-bottom:8px">ETA aprox: ${Math.round(
+        etaMin
+      )} min (~${Math.round(etaMin)} s demo)</div>`;
+    }
+  } catch (e) {
+    /* noop */
+  }
+
   const html = `
     <h3 style="font-size:18px;margin-bottom:8px">Pedido Recibido</h3>
     <div style="margin-bottom:8px">Pedido: <strong>${order.id}</strong></div>
-    <div style="margin-bottom:8px">Fecha: ${order.date} </div>
+    <div style="margin-bottom:8px">Fecha: ${formatDateLocal(order.date)}</div>
     <div style="margin-bottom:8px">Dirección: ${order.address || ""}</div>
+    ${etaHtml}
     <div style="margin-bottom:8px">Método de pago: ${
       order.paymentMethod || ""
     }</div>
     <div style="margin:8px 0;padding:8px;border:1px solid #eee;border-radius:6px">${itemsHtml}</div>
-    <div style="display:flex;justify-content:space-between;font-weight:bold;margin-bottom:12px">Total:<div>Bs ${order.total.toFixed(
-      2
-    )}</div></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
+    <div style="display:flex;justify-content:space-between;font-weight:bold;margin-bottom:12px">Total:<div>${
+      order.currency || "Bs"
+    } ${Number(order.total).toFixed(2)}</div></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button id="btn-open-factura" style="padding:8px 12px;border-radius:6px;border:1px solid #eee;background:#fafafa;">Abrir Factura</button>
+      <button id="btn-view-orders" style="padding:8px 12px;border-radius:6px;background:#10b981;color:white;border:none;">Ver mis pedidos</button>
+      <button id="btn-keep-shopping" style="padding:8px 12px;border-radius:6px;background:#6b7280;color:white;border:none;">Seguir comprando</button>
       <button id="btn-close-ticket" style="padding:8px 12px;border-radius:6px;background:#2563eb;color:white;border:none;">Finalizar</button>
     </div>
   `;
@@ -467,10 +900,57 @@ function showOrderTicket(order, facturaUrl, onClose) {
       console.log("Open factura", e);
     }
   };
+  ov.querySelector("#btn-view-orders").onclick = () => {
+    try {
+      ov.remove();
+      // Mostrar la página de mis pedidos
+      if (typeof showMyOrdersPage === "function") showMyOrdersPage();
+    } catch (e) {
+      console.error("Error mostrando mis pedidos:", e);
+    }
+  };
+  ov.querySelector("#btn-keep-shopping").onclick = () => {
+    try {
+      ov.remove();
+      if (typeof showCategoriesPage === "function") showCategoriesPage();
+    } catch (e) {
+      console.error("Error al seguir comprando:", e);
+    }
+  };
   ov.querySelector("#btn-close-ticket").onclick = () => {
     ov.remove();
     if (onClose) onClose();
   };
+}
+
+// Helper: formatea fecha ISO/ts a hora local Bolivia
+function formatDateLocal(isoOrDate) {
+  try {
+    let d;
+    if (typeof isoOrDate === "number") {
+      d = new Date(isoOrDate);
+    } else {
+      d = new Date(isoOrDate);
+    }
+    // Usar Intl para convertir a America/La_Paz
+    const opts = {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+      timeZone: "America/La_Paz",
+    };
+    return new Intl.DateTimeFormat("es-ES", opts).format(d);
+  } catch (e) {
+    try {
+      return new Date(isoOrDate).toLocaleString();
+    } catch (e2) {
+      return isoOrDate;
+    }
+  }
 }
 
 async function addToCart(item) {
@@ -488,7 +968,12 @@ async function addToCart(item) {
       addons: [],
     };
     cart.push(pizzaItem);
-    if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.notificationOccurred === 'function') tg.HapticFeedback.notificationOccurred("success");
+    if (
+      tg &&
+      tg.HapticFeedback &&
+      typeof tg.HapticFeedback.notificationOccurred === "function"
+    )
+      tg.HapticFeedback.notificationOccurred("success");
     if (typeof updateCartUI === "function") updateCartUI();
 
     // Mostrar modal de sugerencias y fusionar adicionales con esta pizza
@@ -688,6 +1173,46 @@ export function init() {
         leafletMarker = L.marker([-17.7833, -63.1821], {
           draggable: true,
         }).addTo(leafletMap);
+        // Añadir marcador fijo del restaurante en el mapa modal para referencia del usuario
+        const restLatLng = [
+          RESTAURANT_MAP_LOCATION.latitude,
+          RESTAURANT_MAP_LOCATION.longitude,
+        ];
+        try {
+          const restIconSmall = L.icon({
+            iconUrl: REST_ICON_URI,
+            iconSize: [24, 24],
+            iconAnchor: [12, 24],
+          });
+          leafletRestaurantMarker = L.marker(restLatLng, {
+            icon: restIconSmall,
+          })
+            .addTo(leafletMap)
+            .bindPopup(RESTAURANT_LOCATION.name);
+        } catch (e) {
+          console.warn(
+            "No se pudo añadir el marcador del restaurante en el mapa modal (icono):",
+            e
+          );
+        }
+        // Fallback visual si el icono externo falla o no se creó: dibujar un circleMarker
+        if (!leafletRestaurantMarker) {
+          try {
+            leafletRestaurantMarker = L.circleMarker(restLatLng, {
+              radius: 8,
+              color: "#e11d48",
+              fillColor: "#e11d48",
+              fillOpacity: 0.9,
+            })
+              .addTo(leafletMap)
+              .bindPopup(RESTAURANT_LOCATION.name + " (ubicación)");
+          } catch (e) {
+            console.warn(
+              "No se pudo añadir el marcador de fallback del restaurante en el mapa modal:",
+              e
+            );
+          }
+        }
       } else {
         leafletMap.invalidateSize();
       }
@@ -722,37 +1247,113 @@ export function init() {
       const latlng = leafletMarker.getLatLng();
       // Guardar en window para evitar reasignar la import
       window.userLocation = { latitude: latlng.lat, longitude: latlng.lng };
-      locationText.textContent = `Ubicación: ${latlng.lat.toFixed(
-        4
-      )}, ${latlng.lng.toFixed(4)}`;
+      // Calcular ETA aproximado usando la ubicación del restaurante fija
+      try {
+        const dkm = computeDistanceKm(
+          RESTAURANT_LOCATION.latitude,
+          RESTAURANT_LOCATION.longitude,
+          latlng.lat,
+          latlng.lng
+        );
+        const etaMin = estimateTotalMinutes(dkm, (cart || []).length || 1);
+        locationText.textContent = `Ubicación: ${latlng.lat.toFixed(
+          4
+        )}, ${latlng.lng.toFixed(4)} — ETA aprox: ${Math.round(
+          etaMin
+        )} min (~${Math.round(etaMin)} s demo)`;
+      } catch (e) {
+        locationText.textContent = `Ubicación: ${latlng.lat.toFixed(
+          4
+        )}, ${latlng.lng.toFixed(4)}`;
+      }
       // Intentar reverse-geocoding para rellenar la dirección legible
       (async () => {
         try {
-          const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`;
-            let success = false;
+          let success = false;
+
+          // 1) Intentar primero a través del backend (proxy) para evitar problemas de CORS.
+          try {
+            const proxyUrl = `${BACKEND_URL}/reverse_geocode?lat=${latlng.lat}&lon=${latlng.lng}`;
+            const proxyResp = await fetch(proxyUrl, {
+              headers: { Accept: "application/json" },
+            });
+            if (proxyResp.ok) {
+              const pdata = await proxyResp.json().catch(() => null);
+              if (pdata && (pdata.display_name || pdata.address)) {
+                const display =
+                  pdata.display_name || pdata.address || JSON.stringify(pdata);
+                addressDetailsInput.value = display;
+                console.log("Reverse geocode: used backend proxy result");
+                // Mostrar indicador breve de origen
+                try {
+                  let badge = document.getElementById("address-source");
+                  if (!badge) {
+                    badge = document.createElement("span");
+                    badge.id = "address-source";
+                    badge.style.marginLeft = "8px";
+                    badge.style.padding = "4px 8px";
+                    badge.style.background = "#10b981";
+                    badge.style.color = "#fff";
+                    badge.style.borderRadius = "999px";
+                    badge.style.fontSize = "12px";
+                    badge.style.fontWeight = "700";
+                    addressDetailsInput.parentNode &&
+                      addressDetailsInput.parentNode.appendChild(badge);
+                  }
+                  badge.textContent = "Dirección obtenida";
+                  badge.style.display = "inline-block";
+                  setTimeout(() => {
+                    if (badge) badge.style.display = "none";
+                  }, 4000);
+                } catch (e) {
+                  console.warn("address-source badge failed", e);
+                }
+                success = true;
+              }
+            }
+          } catch (err) {
+            console.warn(
+              "Backend reverse_geocode proxy failed or not present:",
+              err
+            );
+          }
+
+          // 2) Si el proxy no devolvió resultado, intentar Nominatim directamente (podría fallar por CORS)
+          if (!success) {
             try {
-              const resp = await fetch(url, { headers: { Accept: "application/json" } });
+              const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`;
+              const resp = await fetch(url, {
+                headers: { Accept: "application/json" },
+              });
               if (resp.ok) {
                 const data = await resp.json();
                 if (data && data.display_name) {
                   addressDetailsInput.value = data.display_name;
+                  console.log("Reverse geocode: used Nominatim result");
                   success = true;
                 }
               }
             } catch (err) {
               // possible CORS or network error
-              console.warn("Reverse geocode fetch failed:", err);
+              console.warn("Reverse geocode fetch failed (Nominatim):", err);
             }
-            if (!success) {
-              // Fallback: mostrar lat/lon en el campo y avisar al usuario
-              addressDetailsInput.value = `Coordenadas: ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)} (Dirección no disponible)`;
-              try {
-                if (tg && typeof tg.showAlert === "function")
-                  tg.showAlert("Dirección no disponible", "No pudimos obtener la dirección legible desde el servicio de geocodificación. Se guardaron las coordenadas.");
-              } catch (e) {
-                console.warn("tg.showAlert failed", e);
-              }
+          }
+
+          // 3) Fallback: mostrar lat/lon en el campo y avisar al usuario (si no hubo éxito)
+          if (!success) {
+            addressDetailsInput.value = `Coordenadas: ${latlng.lat.toFixed(
+              6
+            )}, ${latlng.lng.toFixed(6)} (Dirección no disponible)`;
+            try {
+              if (tg && typeof tg.showAlert === "function")
+                tg.showAlert(
+                  "Dirección no disponible",
+                  "No pudimos obtener la dirección legible desde el servicio de geocodificación. Se guardaron las coordenadas. Puedes editar el campo de dirección manualmente."
+                );
+            } catch (e) {
+              console.warn("tg.showAlert failed", e);
             }
+          }
         } catch (e) {
           // no crítico, solo log
           console.warn("Reverse geocode failed:", e);
@@ -769,7 +1370,12 @@ export function init() {
     locationText.classList.remove("text-red-600");
     locationText.classList.add("text-green-600");
     mapModal.classList.add("hidden");
-    if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.notificationOccurred === 'function') tg.HapticFeedback.notificationOccurred("success");
+    if (
+      tg &&
+      tg.HapticFeedback &&
+      typeof tg.HapticFeedback.notificationOccurred === "function"
+    )
+      tg.HapticFeedback.notificationOccurred("success");
   });
 
   pageProducts.addEventListener("click", (e) => {

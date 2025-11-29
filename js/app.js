@@ -20,6 +20,7 @@ import {
   showRateDriverPage,
   mostrarModalSugerencias,
   setMenuCache,
+  updateCartUI,
 } from "./ui.js";
 
 // --- Leaflet Tracking Map Variables ---
@@ -125,7 +126,7 @@ const saveLocationBtn = document.getElementById("save-location");
 // --- Cargar/Guardar Pedidos (Persistencia) ---
 function saveOrdersToStorage() {
   try {
-    localStorage.setItem("myPizzeriaOrders", JSON.stringify(myOrders));
+    localStorage.setItem("myOrders", JSON.stringify(myOrders));
   } catch (e) {
     console.error("Error guardando en localStorage:", e);
   }
@@ -148,6 +149,8 @@ async function loadOrdersFromBackend() {
     myOrders.splice(0, myOrders.length);
   }
 }
+// Exponer para que ui.js pueda llamarla
+window.loadOrdersFromBackend = loadOrdersFromBackend;
 
 function handlePayment() {
   // --- CAMBIO MAPA (Sugerencia 1) ---
@@ -229,7 +232,10 @@ async function showFinalConfirmation(paymentMethod) {
     myOrders.push(newOrder);
     saveOrdersToStorage();
 
-    cart = [];
+    // Vaciar el carrito correctamente (no reasignar la variable importada)
+    if (Array.isArray(cart)) cart.splice(0, cart.length);
+    // Actualizar UI del carrito
+    if (typeof updateCartUI === "function") updateCartUI();
     userLocation = null;
     locationText.textContent = "";
     addressDetailsInput.value = "";
@@ -257,6 +263,7 @@ async function addToCart(item) {
     cart.push({ ...item, quantity: 1 });
   }
   tg.HapticFeedback.notificationOccurred("success");
+  if (typeof updateCartUI === "function") updateCartUI();
 
   // Si es pizza, mostrar modal de sugerencias
   if (item && item.id && item.id.startsWith("pizza")) {

@@ -181,6 +181,71 @@ console.log("tg in ui:", tg);
 // import { fetchProducts } from "./data.js";
 import { cart, myOrders, currentRating } from "./state.js";
 
+// --- Floating cart badge + UI update ---
+function ensureFloatingCart() {
+  let el = document.getElementById("floating-cart");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "floating-cart";
+  el.style.position = "fixed";
+  el.style.right = "18px";
+  el.style.bottom = "80px";
+  el.style.zIndex = "60";
+  el.style.background = "#2563eb";
+  el.style.color = "white";
+  el.style.padding = "10px 14px";
+  el.style.borderRadius = "999px";
+  el.style.boxShadow = "0 6px 18px rgba(0,0,0,0.1)";
+  el.style.cursor = "pointer";
+  el.onclick = () => showCartPage();
+  const span = document.createElement("span");
+  span.id = "floating-cart-count";
+  span.style.fontWeight = "700";
+  el.appendChild(span);
+  document.body.appendChild(el);
+  return el;
+}
+
+export function updateCartUI() {
+  const el = ensureFloatingCart();
+  const badge = el.querySelector("#floating-cart-count");
+  const totalItems = (cart || []).reduce((s, i) => s + (i.quantity || 0), 0);
+  badge.textContent = `${totalItems}`;
+
+  // Si la página del carrito está visible, renderizar
+  if (!pageCart.classList.contains("hidden")) {
+    cartItemsList.innerHTML = "";
+    if (!cart || cart.length === 0) {
+      cartEmptyMsg.classList.remove("hidden");
+      cartTotal.textContent = "$0.00";
+      return;
+    }
+    cartEmptyMsg.classList.add("hidden");
+    cart.forEach((item, idx) => {
+      const itemEl = document.createElement("div");
+      itemEl.className = "cart-item flex items-center justify-between p-3 bg-white rounded-lg mb-3";
+      itemEl.innerHTML = `
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded bg-gray-100 flex items-center justify-center">${item.emoji || "🍕"}</div>
+          <div>
+            <div class="font-semibold">${item.name}</div>
+            <div class="text-sm text-gray-500">Bs ${item.price.toFixed(2)}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn-qty-change px-2 py-1 bg-gray-200 rounded" data-index="${idx}" data-change="-1">-</button>
+          <span class="font-semibold">${item.quantity}</span>
+          <button class="btn-qty-change px-2 py-1 bg-gray-200 rounded" data-index="${idx}" data-change="1">+</button>
+          <button class="btn-remove-item ml-3 text-red-500" data-index="${idx}">Eliminar</button>
+        </div>
+      `;
+      cartItemsList.appendChild(itemEl);
+    });
+    const total = cart.reduce((s, i) => s + i.price * (i.quantity || 1), 0);
+    cartTotal.textContent = `$${total.toFixed(2)}`;
+  }
+}
+
 // --- Funciones de Navegación ---
 
 export function hideAllPages() {
@@ -358,8 +423,8 @@ export function showCartPage() {
   tg.BackButton.show();
   tg.BackButton.onClick(showCategoriesPage);
   tg.HapticFeedback.impactOccurred("light");
-
-  // Actualizar el carrito en la UI - lógica en app.js
+  // Actualizar el carrito en la UI
+  if (typeof updateCartUI === "function") updateCartUI();
 }
 
 export function showPaymentMethodPage() {

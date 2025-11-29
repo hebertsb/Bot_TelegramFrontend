@@ -23,8 +23,14 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
     .map(
       (adic) => `
         <label class="flex items-center space-x-2">
-          <input type="checkbox" class="sug-adic" value="${adic.id}" data-name="${adic.name}" data-price="${adic.price}" data-emoji="${adic.emoji || ""}" data-cat="adicional">
-          <span>${adic.emoji || ""} ${adic.name} <span class="text-xs text-gray-500">(+Bs ${adic.price})</span></span>
+          <input type="checkbox" class="sug-adic" value="${
+            adic.id
+          }" data-name="${adic.name}" data-price="${adic.price}" data-emoji="${
+        adic.emoji || ""
+      }" data-cat="adicional">
+          <span>${adic.emoji || ""} ${
+        adic.name
+      } <span class="text-xs text-gray-500">(+Bs ${adic.price})</span></span>
         </label>
       `
     )
@@ -35,8 +41,14 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
     .map(
       (beb) => `
         <label class="flex items-center space-x-2">
-          <input type="checkbox" class="sug-beb" value="${beb.id}" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${beb.emoji || ""}" data-cat="bebida">
-          <span>${beb.emoji || ""} ${beb.name} <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
+          <input type="checkbox" class="sug-beb" value="${beb.id}" data-name="${
+        beb.name
+      }" data-price="${beb.price}" data-emoji="${
+        beb.emoji || ""
+      }" data-cat="bebida">
+          <span>${beb.emoji || ""} ${
+        beb.name
+      } <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
         </label>
       `
     )
@@ -552,6 +564,7 @@ export async function showMyOrdersPage() {
                       <p class="text-sm text-gray-500">Realizado el: ${new Date(
                         order.date
                       ).toLocaleString("es-ES")}</p>
+                      <p class="text-sm text-gray-500">Cliente: ${order.customer_name || order.chat_id || 'Anónimo'}</p>
                   </div>
               `;
         myOrdersList.innerHTML = orderHTML + myOrdersList.innerHTML;

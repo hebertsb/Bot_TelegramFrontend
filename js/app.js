@@ -330,6 +330,13 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
         .reduce((sum, item) => sum + item.price * (item.quantity || 1), 0)
         .toFixed(2)
     ),
+    // Añadir nombre del cliente si está disponible desde Telegram WebApp
+    customer_name:
+      (tg && tg.initDataUnsafe && tg.initDataUnsafe.user
+        ? `${tg.initDataUnsafe.user.first_name || ""} ${
+            tg.initDataUnsafe.user.last_name || ""
+          }`.trim()
+        : window.userName || "") || "",
   };
 
   // --- INICIO CAMBIO NOTIFICACIONES (Sugerencias 2, 3, 4) ---

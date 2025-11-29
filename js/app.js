@@ -536,8 +536,6 @@ async function addToCart(item) {
     });
     return;
   }
-    return;
-  }
 
   // Si el item NO es pizza, pero está marcado como adicional, intentar anexarlo
   // a la última pizza del carrito para evitar que queden como items sueltos.

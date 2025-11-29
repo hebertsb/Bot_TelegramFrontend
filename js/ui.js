@@ -26,23 +26,23 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
       <h4 class="font-semibold mb-1">¿Quieres personalizarla?</h4>
       <div class="grid grid-cols-1 gap-2">
         ${(menuCache.adicionales || [])
-          .map(
-            (adic) => `
-          <label class="flex items-center space-x-2">
-            <input type="checkbox" class="sug-adic" value="${
-              adic.id
-            }" data-name="${adic.name}" data-price="${
-              adic.price
-            }" data-emoji="${adic.emoji || ""}">
-            <span>${adic.emoji || ""} ${
-              adic.name
-            } <span class="text-xs text-gray-500">(+Bs ${
-              adic.price
-            })</span></span>
-          </label>
-        `
-          )
-          .join("")}
+                .map(
+                  (adic) => `
+                <label class="flex items-center space-x-2">
+                  <input type="checkbox" class="sug-adic" value="${
+                    adic.id
+                  }" data-name="${adic.name}" data-price="${
+                    adic.price
+                  }" data-emoji="${adic.emoji || ""}" data-cat="adicional">
+                  <span>${adic.emoji || ""} ${
+                    adic.name
+                  } <span class="text-xs text-gray-500">(+Bs ${
+                    adic.price
+                  })</span></span>
+                </label>
+              `
+                )
+                .join("")}
       </div>
     </div>
     <div class="mb-4">
@@ -57,21 +57,21 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
               beb.id
             }" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${
               beb.emoji || ""
-            }">
-            <span>${beb.emoji || ""} ${
-              beb.name
-            } <span class="text-xs text-gray-500">(+Bs ${
-              beb.price
-            })</span></span>
-          </label>
-        `
-          )
-          .join("")}
-      </div>
-    </div>
-    <div class="flex justify-end space-x-2 mt-4">
-      <button id="btn-sug-continuar" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Continuar</button>
-      <button id="btn-sug-carrito" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400">Ir al Carrito</button>
+            .map(
+              (beb) => `
+            <label class="flex items-center space-x-2">
+              <input type="checkbox" class="sug-beb" value="${
+                beb.id
+              }" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${
+                beb.emoji || ""
+              }" data-cat="bebida">
+              <span>${beb.emoji || ""} ${
+                beb.name
+              } <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
+            </label>
+          `
+            )
+            .join("")}
     </div>
   `;
 
@@ -88,6 +88,7 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
       price: parseFloat(input.dataset.price),
       emoji: input.dataset.emoji,
       quantity: 1,
+      isAddon: true,
     }));
     const bebidas = Array.from(
       overlay.querySelectorAll(".sug-beb:checked")
@@ -97,6 +98,7 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
       price: parseFloat(input.dataset.price),
       emoji: input.dataset.emoji,
       quantity: 1,
+      isDrink: true,
     }));
     document.body.removeChild(overlay);
     if (onAddItems) onAddItems([...adicionales, ...bebidas]);
@@ -110,6 +112,7 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
       price: parseFloat(input.dataset.price),
       emoji: input.dataset.emoji,
       quantity: 1,
+      isAddon: true,
     }));
     const bebidas = Array.from(
       overlay.querySelectorAll(".sug-beb:checked")
@@ -119,6 +122,7 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
       price: parseFloat(input.dataset.price),
       emoji: input.dataset.emoji,
       quantity: 1,
+      isDrink: true,
     }));
     document.body.removeChild(overlay);
     if (onAddItems) onAddItems([...adicionales, ...bebidas], true); // true = ir al carrito
@@ -189,19 +193,17 @@ function ensureFloatingCart() {
   el.id = "floating-cart";
   el.style.position = "fixed";
   el.style.right = "18px";
-  el.style.bottom = "80px";
+  el.style.top = "18px";
   el.style.zIndex = "60";
   el.style.background = "#2563eb";
   el.style.color = "white";
-  el.style.padding = "10px 14px";
-  el.style.borderRadius = "999px";
+  el.style.padding = "8px 10px";
+  el.style.borderRadius = "12px";
   el.style.boxShadow = "0 6px 18px rgba(0,0,0,0.1)";
   el.style.cursor = "pointer";
   el.onclick = () => showCartPage();
-  const span = document.createElement("span");
-  span.id = "floating-cart-count";
-  span.style.fontWeight = "700";
-  el.appendChild(span);
+  // Icon + badge
+  el.innerHTML = `<span style="font-size:18px; margin-right:6px">🛒</span><span id="floating-cart-count" style="font-weight:700"></span>`;
   document.body.appendChild(el);
   return el;
 }
@@ -212,7 +214,13 @@ export function updateCartUI() {
   const totalItems = (cart || []).reduce((s, i) => s + (i.quantity || 0), 0);
   badge.textContent = `${totalItems}`;
 
-  // Si la página del carrito está visible, renderizar
+  // Mostrar el carrito flotante solo cuando el usuario está seleccionando productos
+  const showFloating = !pageCart.classList.contains("hidden")
+    ? false
+    : (!pageCategories.classList.contains("hidden") || !pageProducts.classList.contains("hidden") || !pageCustomPizza.classList.contains("hidden"));
+  el.style.display = showFloating ? "flex" : "none";
+
+  // Si la página del carrito está visible, renderizar contenido del carrito
   if (!pageCart.classList.contains("hidden")) {
     cartItemsList.innerHTML = "";
     if (!cart || cart.length === 0) {
@@ -223,13 +231,23 @@ export function updateCartUI() {
     cartEmptyMsg.classList.add("hidden");
     cart.forEach((item, idx) => {
       const itemEl = document.createElement("div");
-      itemEl.className = "cart-item flex items-center justify-between p-3 bg-white rounded-lg mb-3";
+      itemEl.className =
+        "cart-item flex items-center justify-between p-3 bg-white rounded-lg mb-3";
+      // Mostrar addons si existen
+      const addonsHTML = (item.addons && item.addons.length > 0)
+        ? `<div class="text-sm text-gray-500 mt-1">
+              ${item.addons.map(a=>`<div class="flex items-center gap-2"><span class="text-xs">${a.emoji||''}</span><span>${a.name} (+Bs ${a.price.toFixed(2)})</span></div>`).join('')}
+           </div>`
+        : "";
       itemEl.innerHTML = `
         <div class="flex items-center gap-3">
-          <div class="w-12 h-12 rounded bg-gray-100 flex items-center justify-center">${item.emoji || "🍕"}</div>
+          <div class="w-12 h-12 rounded bg-gray-100 flex items-center justify-center">${
+            item.emoji || "🍕"
+          }</div>
           <div>
             <div class="font-semibold">${item.name}</div>
             <div class="text-sm text-gray-500">Bs ${item.price.toFixed(2)}</div>
+            ${addonsHTML}
           </div>
         </div>
         <div class="flex items-center gap-2">

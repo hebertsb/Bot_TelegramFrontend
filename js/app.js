@@ -209,7 +209,8 @@ async function showFinalConfirmation(paymentMethod) {
 
   // --- INICIO CAMBIO NOTIFICACIONES (Sugerencias 2, 3, 4) ---
   try {
-    mainButton.showProgress(true);
+    const mb = tg.mainButton || tg.MainButton || null;
+    if (mb && typeof mb.showProgress === "function") mb.showProgress(true);
 
     const response = await fetch(`${BACKEND_URL}/submit_order`, {
       method: "POST",
@@ -250,12 +251,78 @@ async function showFinalConfirmation(paymentMethod) {
       `No pudimos contactar a nuestro servidor. Por favor, inténtalo de nuevo. (${error.message})`
     );
   } finally {
-    mainButton.hideProgress();
+    if (mb && typeof mb.hideProgress === "function") mb.hideProgress();
   }
   // --- FIN CAMBIO NOTIFICACIONES ---
 }
 
 async function addToCart(item) {
+  // Si es una pizza, crear una instancia separada que pueda tener addons
+  if (item && item.id && String(item.id).startsWith("pizza")) {
+    const instanceId = `${item.id}_${Date.now()}`;
+    const pizzaItem = {
+      id: instanceId,
+      baseId: item.id,
+      name: item.name,
+      emoji: item.emoji,
+      basePrice: item.price,
+      price: item.price, // precio por unidad incluyendo addons
+      quantity: 1,
+      addons: [],
+    };
+    cart.push(pizzaItem);
+    tg.HapticFeedback.notificationOccurred("success");
+    if (typeof updateCartUI === "function") updateCartUI();
+
+    // Mostrar modal de sugerencias y fusionar adicionales con esta pizza
+    if (!window._menuCache) {
+      const menu = await fetchProducts();
+      setMenuCache(menu);
+      window._menuCache = menu;
+    } else {
+      setMenuCache(window._menuCache);
+    }
+
+    mostrarModalSugerencias(item, (items, irCarrito) => {
+      if (Array.isArray(items) && items.length > 0) {
+        items.forEach((prod) => {
+          if (prod.isAddon) {
+            // añadir al array de addons de la pizza y sumar precio
+            pizzaItem.addons.push({ ...prod });
+            pizzaItem.price = parseFloat((pizzaItem.price + prod.price).toFixed(2));
+          } else if (prod.isDrink) {
+            // bebidas como items independientes
+            const drinkItem = {
+              id: `drink_${prod.id}_${Date.now()}`,
+              name: prod.name,
+              price: prod.price,
+              emoji: prod.emoji,
+              quantity: prod.quantity || 1,
+            };
+            cart.push(drinkItem);
+          } else {
+            // fallback: si no está marcado, añadir como item separado
+            const fallback = {
+              id: `${prod.id}_${Date.now()}`,
+              name: prod.name,
+              price: prod.price,
+              emoji: prod.emoji,
+              quantity: prod.quantity || 1,
+            };
+            cart.push(fallback);
+          }
+        });
+      }
+      if (irCarrito) {
+        showCartPage();
+      } else {
+        if (typeof updateCartUI === "function") updateCartUI();
+      }
+    });
+    return;
+  }
+
+  // Items no-pizza mantienen comportamiento previo (se agrupan por id)
   const existingItem = cart.find((i) => i.id === item.id);
   if (existingItem) {
     existingItem.quantity += 1;
@@ -264,33 +331,6 @@ async function addToCart(item) {
   }
   tg.HapticFeedback.notificationOccurred("success");
   if (typeof updateCartUI === "function") updateCartUI();
-
-  // Si es pizza, mostrar modal de sugerencias
-  if (item && item.id && item.id.startsWith("pizza")) {
-    // Asegurarse de tener el menú en caché
-    if (!window._menuCache) {
-      const menu = await fetchProducts();
-      setMenuCache(menu);
-      window._menuCache = menu;
-    } else {
-      setMenuCache(window._menuCache);
-    }
-    mostrarModalSugerencias(item, (items, irCarrito) => {
-      if (Array.isArray(items)) {
-        items.forEach((prod) => {
-          const exist = cart.find((i) => i.id === prod.id);
-          if (exist) {
-            exist.quantity += 1;
-          } else {
-            cart.push(prod);
-          }
-        });
-      }
-      if (irCarrito) {
-        showCartPage();
-      }
-    });
-  }
 }
 
 async function callBackendToCreatePizza() {
@@ -432,11 +472,37 @@ export function init() {
   });
 
   saveLocationBtn.addEventListener("click", () => {
-    const latlng = leafletMarker.getLatLng();
-    userLocation = { latitude: latlng.lat, longitude: latlng.lng };
-    locationText.textContent = `Ubicación: ${latlng.lat.toFixed(
-      4
-    )}, ${latlng.lng.toFixed(4)}`;
+    try {
+      if (!leafletMarker || typeof leafletMarker.getLatLng !== "function") {
+        tg.showAlert("Error", "No se pudo obtener la ubicación. Intenta de nuevo.");
+        return;
+      }
+      const latlng = leafletMarker.getLatLng();
+      userLocation = { latitude: latlng.lat, longitude: latlng.lng };
+      locationText.textContent = `Ubicación: ${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}`;
+    // Intentar reverse-geocoding para rellenar la dirección legible
+    (async () => {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`;
+        const resp = await fetch(url, {
+          headers: { Accept: "application/json" },
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.display_name) {
+            addressDetailsInput.value = data.display_name;
+          }
+        }
+      } catch (e) {
+        // no crítico, solo log
+        console.warn("Reverse geocode failed:", e);
+      }
+    })();
+    } catch (e) {
+      console.error("Error guardando ubicación:", e);
+      tg.showAlert("Error", "No se pudo guardar la ubicación. Intenta otra vez.");
+      return;
+    }
     locationText.classList.remove("text-red-600");
     locationText.classList.add("text-green-600");
     mapModal.classList.add("hidden");

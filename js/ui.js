@@ -19,59 +19,32 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
     "bg-white rounded-lg shadow-lg p-6 max-w-md w-full animate-fade-in";
 
   modal.innerHTML = `
-    <h3 class="text-lg font-bold mb-2 text-green-700">✅ ${
-      productoBase.name
-    } agregada</h3>
+    <h3 class="text-lg font-bold mb-2 text-green-700">✅ ${productoBase.name} agregada</h3>
     <div class="mb-4">
       <h4 class="font-semibold mb-1">¿Quieres personalizarla?</h4>
       <div class="grid grid-cols-1 gap-2">
-        ${(menuCache.adicionales || [])
-                .map(
-                  (adic) => `
-                <label class="flex items-center space-x-2">
-                  <input type="checkbox" class="sug-adic" value="${
-                    adic.id
-                  }" data-name="${adic.name}" data-price="${
-                    adic.price
-                  }" data-emoji="${adic.emoji || ""}" data-cat="adicional">
-                  <span>${adic.emoji || ""} ${
-                    adic.name
-                  } <span class="text-xs text-gray-500">(+Bs ${
-                    adic.price
-                  })</span></span>
-                </label>
-              `
-                )
-                .join("")}
+        ${(menuCache.adicionales || []).map((adic) => `
+          <label class="flex items-center space-x-2">
+            <input type="checkbox" class="sug-adic" value="${adic.id}" data-name="${adic.name}" data-price="${adic.price}" data-emoji="${adic.emoji || ""}" data-cat="adicional">
+            <span>${adic.emoji || ""} ${adic.name} <span class="text-xs text-gray-500">(+Bs ${adic.price})</span></span>
+          </label>
+        `).join("")}
       </div>
     </div>
     <div class="mb-4">
       <h4 class="font-semibold mb-1">¿Agregar bebida?</h4>
       <div class="grid grid-cols-1 gap-2">
-        ${(menuCache.bebidas || [])
-          .slice(0, 3)
-          .map(
-            (beb) => `
+        ${(menuCache.bebidas || []).slice(0, 3).map((beb) => `
           <label class="flex items-center space-x-2">
-            <input type="checkbox" class="sug-beb" value="${
-              beb.id
-            }" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${
-              beb.emoji || ""
-            .map(
-              (beb) => `
-            <label class="flex items-center space-x-2">
-              <input type="checkbox" class="sug-beb" value="${
-                beb.id
-              }" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${
-                beb.emoji || ""
-              }" data-cat="bebida">
-              <span>${beb.emoji || ""} ${
-                beb.name
-              } <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
-            </label>
-          `
-            )
-            .join("")}
+            <input type="checkbox" class="sug-beb" value="${beb.id}" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${beb.emoji || ""}" data-cat="bebida">
+            <span>${beb.emoji || ""} ${beb.name} <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
+          </label>
+        `).join("")}
+      </div>
+    </div>
+    <div class="flex justify-end gap-2">
+      <button id="btn-sug-carrito" class="px-4 py-2 rounded bg-gray-200">Agregar y ver carrito</button>
+      <button id="btn-sug-continuar" class="px-4 py-2 rounded bg-blue-600 text-white">Agregar y seguir comprando</button>
     </div>
   `;
 

@@ -226,7 +226,8 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
 
         // Heurística: si el item está marcado como addon y hay una pizza previa,
         // lo anexamos a la última pizza del array (esto cubre el flujo usual).
-        const isAddon = !!(it && it.isAddon) ||
+        const isAddon =
+          !!(it && it.isAddon) ||
           (it && String(it.id).toLowerCase().startsWith("adic"));
 
         if (isAddon && out.length > 0) {
@@ -242,7 +243,10 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
         }
 
         // Fallback: item normal (bebida, adicional suelto, etc.)
-        const copy = { ...(it || {}), price: parseFloat((it && it.price) || 0) };
+        const copy = {
+          ...(it || {}),
+          price: parseFloat((it && it.price) || 0),
+        };
         out.push(copy);
       }
       return out;

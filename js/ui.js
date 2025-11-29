@@ -260,7 +260,7 @@ export function updateCartUI() {
       cartItemsList.appendChild(itemEl);
     });
     const total = cart.reduce((s, i) => s + i.price * (i.quantity || 1), 0);
-    cartTotal.textContent = `$${total.toFixed(2)}`;
+    cartTotal.textContent = `Bs ${total.toFixed(2)}`;
   }
 }
 

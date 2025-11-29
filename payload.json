@@ -1,0 +1,36 @@
+﻿{
+  "chat_id": "1463499995",
+  "order": {
+    "id": "ORD-TEST-001",
+    "items": [
+      {
+        "id": "pizza-1_instance",
+        "baseId": "pizza-1",
+        "name": "Pizza Pepperoni",
+        "emoji": "🍕",
+        "basePrice": 69,
+        "price": 79.0,
+        "quantity": 1,
+        "addons": [
+          {
+            "id": "adic-1",
+            "name": "Extra Queso Mozzarella",
+            "price": 10.0,
+            "quantity": 1
+          }
+        ]
+      }
+    ],
+    "address": "Calle Falsa 123",
+    "location": { "latitude": -17.7833, "longitude": -63.1821 },
+    "paymentMethod": "Efectivo",
+    "date": "2025-11-29T01:13:36.5543052-04:00",
+    "date_ts": 1764393216554,
+    "channel": "telegram_webapp",
+    "currency": "Bs",
+    "status": "Pendiente",
+    "isRated": false,
+    "total": 79.0
+  },
+  "notify_restaurant": true
+}

@@ -18,55 +18,42 @@ export function mostrarModalSugerencias(productoBase, onAddItems) {
   modal.className =
     "bg-white rounded-lg shadow-lg p-6 max-w-md w-full animate-fade-in";
 
+  // Generar HTML seguro para adicionales y bebidas
+  const adicionalesHtml = (menuCache.adicionales || [])
+    .map(
+      (adic) => `
+        <label class="flex items-center space-x-2">
+          <input type="checkbox" class="sug-adic" value="${adic.id}" data-name="${adic.name}" data-price="${adic.price}" data-emoji="${adic.emoji || ""}" data-cat="adicional">
+          <span>${adic.emoji || ""} ${adic.name} <span class="text-xs text-gray-500">(+Bs ${adic.price})</span></span>
+        </label>
+      `
+    )
+    .join("");
+
+  const bebidasHtml = (menuCache.bebidas || [])
+    .slice(0, 3)
+    .map(
+      (beb) => `
+        <label class="flex items-center space-x-2">
+          <input type="checkbox" class="sug-beb" value="${beb.id}" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${beb.emoji || ""}" data-cat="bebida">
+          <span>${beb.emoji || ""} ${beb.name} <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
+        </label>
+      `
+    )
+    .join("");
+
   modal.innerHTML = `
-    <h3 class="text-lg font-bold mb-2 text-green-700">✅ ${
-      productoBase.name
-    } agregada</h3>
+    <h3 class="text-lg font-bold mb-2 text-green-700">✅ ${productoBase.name} agregada</h3>
     <div class="mb-4">
       <h4 class="font-semibold mb-1">¿Quieres personalizarla?</h4>
       <div class="grid grid-cols-1 gap-2">
-        ${(menuCache.adicionales || [])
-          .map(
-            (adic) => `
-          <label class="flex items-center space-x-2">
-            <input type="checkbox" class="sug-adic" value="${
-              adic.id
-            }" data-name="${adic.name}" data-price="${
-              adic.price
-            }" data-emoji="${adic.emoji || ""}" data-cat="adicional">
-            <span>${adic.emoji || ""} ${
-              adic.name
-            } <span class="text-xs text-gray-500">(+Bs ${
-              adic.price
-            })</span></span>
-      let GLOBAL_TRACKING_INTERVAL = null;
-      let GLOBAL_LAST_ORDER_STATUS = null;
-          )
-          .join("")}
+        ${adicionalesHtml}
       </div>
     </div>
     <div class="mb-4">
       <h4 class="font-semibold mb-1">¿Agregar bebida?</h4>
       <div class="grid grid-cols-1 gap-2">
-        ${(menuCache.bebidas || [])
-          .slice(0, 3)
-          .map(
-            (beb) => `
-          <label class="flex items-center space-x-2">
-            <input type="checkbox" class="sug-beb" value="${
-              beb.id
-            }" data-name="${beb.name}" data-price="${beb.price}" data-emoji="${
-              beb.emoji || ""
-            }" data-cat="bebida">
-            <span>${beb.emoji || ""} ${
-              beb.name
-            } <span class="text-xs text-gray-500">(+Bs ${
-              beb.price
-            })</span></span>
-          </label>
-        `
-          )
-          .join("")}
+        ${bebidasHtml}
       </div>
     </div>
     <div class="flex justify-end gap-2">

@@ -488,7 +488,7 @@ async function addToCart(item) {
       addons: [],
     };
     cart.push(pizzaItem);
-    tg.HapticFeedback.notificationOccurred("success");
+    if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.notificationOccurred === 'function') tg.HapticFeedback.notificationOccurred("success");
     if (typeof updateCartUI === "function") updateCartUI();
 
     // Mostrar modal de sugerencias y fusionar adicionales con esta pizza
@@ -729,15 +729,30 @@ export function init() {
       (async () => {
         try {
           const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latlng.lat}&lon=${latlng.lng}`;
-          const resp = await fetch(url, {
-            headers: { Accept: "application/json" },
-          });
-          if (resp.ok) {
-            const data = await resp.json();
-            if (data && data.display_name) {
-              addressDetailsInput.value = data.display_name;
+            let success = false;
+            try {
+              const resp = await fetch(url, { headers: { Accept: "application/json" } });
+              if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.display_name) {
+                  addressDetailsInput.value = data.display_name;
+                  success = true;
+                }
+              }
+            } catch (err) {
+              // possible CORS or network error
+              console.warn("Reverse geocode fetch failed:", err);
             }
-          }
+            if (!success) {
+              // Fallback: mostrar lat/lon en el campo y avisar al usuario
+              addressDetailsInput.value = `Coordenadas: ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)} (Dirección no disponible)`;
+              try {
+                if (tg && typeof tg.showAlert === "function")
+                  tg.showAlert("Dirección no disponible", "No pudimos obtener la dirección legible desde el servicio de geocodificación. Se guardaron las coordenadas.");
+              } catch (e) {
+                console.warn("tg.showAlert failed", e);
+              }
+            }
         } catch (e) {
           // no crítico, solo log
           console.warn("Reverse geocode failed:", e);
@@ -754,7 +769,7 @@ export function init() {
     locationText.classList.remove("text-red-600");
     locationText.classList.add("text-green-600");
     mapModal.classList.add("hidden");
-    tg.HapticFeedback.notificationOccurred("success");
+    if (tg && tg.HapticFeedback && typeof tg.HapticFeedback.notificationOccurred === 'function') tg.HapticFeedback.notificationOccurred("success");
   });
 
   pageProducts.addEventListener("click", (e) => {

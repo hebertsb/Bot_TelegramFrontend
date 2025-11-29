@@ -158,6 +158,11 @@ console.log("tg in ui:", tg);
 // import { fetchProducts } from "./data.js";
 import { cart, myOrders, currentRating } from "./state.js";
 
+// Helpers para compatibilidad entre versiones y mocks
+const MB = (tg && (tg.MainButton || tg.mainButton || tg.main_button || null));
+const BB = (tg && (tg.BackButton || tg.backButton || tg.back_button || null));
+const HF = (tg && (tg.HapticFeedback || tg.hapticFeedback || null));
+
 // --- Floating cart badge + UI update ---
 function ensureFloatingCart() {
   let el = document.getElementById("floating-cart");
@@ -250,12 +255,8 @@ export function hideAllPages() {
   pageMyOrders.classList.add("hidden");
   pageOrderTracking.classList.add("hidden");
   pageRateDriver.classList.add("hidden");
-  if (tg && tg.MainButton) {
-    tg.MainButton.hide();
-  }
-  if (tg && tg.BackButton) {
-    tg.BackButton.hide();
-  }
+  if (MB && typeof MB.hide === "function") MB.hide();
+  if (BB && typeof BB.hide === "function") BB.hide();
 }
 
 export function showWelcomePage() {
@@ -279,7 +280,7 @@ export async function showCategoriesPage() {
   mainHeader.classList.remove("hidden");
   pageCategories.classList.remove("hidden");
 
-  tg.MainButton.onClick(showCartPage);
+  if (MB && typeof MB.onClick === "function") MB.onClick(showCartPage);
 
   document.getElementById("pizza-result").classList.add("hidden");
   document.getElementById("loading-spinner").classList.add("hidden");
@@ -338,7 +339,7 @@ export async function showProductPage(categoryName, categoryKey) {
   console.log("Nueva versión de showProductPage cargada");
   hideAllPages();
   pageProducts.classList.remove("hidden");
-  tg.MainButton.onClick(showCartPage);
+  if (MB && typeof MB.onClick === "function") MB.onClick(showCartPage);
   tg.BackButton.show();
   tg.BackButton.onClick(showCategoriesPage);
   tg.HapticFeedback.impactOccurred("light");
@@ -395,25 +396,26 @@ export async function showProductPage(categoryName, categoryKey) {
 export function showCustomPizzaPage() {
   hideAllPages();
   pageCustomPizza.classList.remove("hidden");
-  tg.MainButton.setText("Generar Pizza");
-  tg.MainButton.show();
-  tg.MainButton.onClick(() => {
-    // Lógica para generar pizza
-  });
-  tg.BackButton.show();
-  tg.BackButton.onClick(showCategoriesPage);
-  tg.HapticFeedback.impactOccurred("light");
+  if (MB && typeof MB.setText === "function") MB.setText("Generar Pizza");
+  if (MB && typeof MB.show === "function") MB.show();
+  if (MB && typeof MB.onClick === "function")
+    MB.onClick(() => {
+      // Lógica para generar pizza
+    });
+  if (BB && typeof BB.show === "function") BB.show();
+  if (BB && typeof BB.onClick === "function") BB.onClick(showCategoriesPage);
+  if (HF && typeof HF.impactOccurred === "function") HF.impactOccurred("light");
 }
 
 export function showCartPage() {
   hideAllPages();
   pageCart.classList.remove("hidden");
-  tg.MainButton.setText("Pagar");
-  tg.MainButton.show();
-  tg.MainButton.onClick(showPaymentMethodPage);
-  tg.BackButton.show();
-  tg.BackButton.onClick(showCategoriesPage);
-  tg.HapticFeedback.impactOccurred("light");
+  if (MB && typeof MB.setText === "function") MB.setText("Pagar");
+  if (MB && typeof MB.show === "function") MB.show();
+  if (MB && typeof MB.onClick === "function") MB.onClick(showPaymentMethodPage);
+  if (BB && typeof BB.show === "function") BB.show();
+  if (BB && typeof BB.onClick === "function") BB.onClick(showCategoriesPage);
+  if (HF && typeof HF.impactOccurred === "function") HF.impactOccurred("light");
   // Actualizar el carrito en la UI
   if (typeof updateCartUI === "function") updateCartUI();
 }
@@ -421,18 +423,18 @@ export function showCartPage() {
 export function showPaymentMethodPage() {
   hideAllPages();
   pagePaymentMethod.classList.remove("hidden");
-  tg.MainButton.hide();
-  tg.BackButton.show();
-  tg.BackButton.onClick(showCartPage);
-  tg.HapticFeedback.impactOccurred("light");
+  if (MB && typeof MB.hide === "function") MB.hide();
+  if (BB && typeof BB.show === "function") BB.show();
+  if (BB && typeof BB.onClick === "function") BB.onClick(showCartPage);
+  if (HF && typeof HF.impactOccurred === "function") HF.impactOccurred("light");
 }
 
 export async function showMyOrdersPage() {
   hideAllPages();
   pageMyOrders.classList.remove("hidden");
-  tg.MainButton.hide();
-  tg.BackButton.show();
-  tg.BackButton.onClick(showWelcomePage);
+  if (MB && typeof MB.hide === "function") MB.hide();
+  if (BB && typeof BB.show === "function") BB.show();
+  if (BB && typeof BB.onClick === "function") BB.onClick(showWelcomePage);
 
   myOrdersList.innerHTML =
     "<div class='text-center text-gray-500'>Cargando pedidos...</div>";
@@ -490,9 +492,9 @@ import { BACKEND_URL } from "./config.js";
 export async function showOrderTrackingPage(orderId) {
   hideAllPages();
   pageOrderTracking.classList.remove("hidden");
-  tg.MainButton.hide();
-  tg.BackButton.show();
-  tg.BackButton.onClick(() => {
+  if (MB && typeof MB.hide === "function") MB.hide();
+  if (BB && typeof BB.show === "function") BB.show();
+  if (BB && typeof BB.onClick === "function") BB.onClick(() => {
     if (trackingInterval) {
       clearInterval(trackingInterval);
       trackingInterval = null;

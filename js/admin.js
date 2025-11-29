@@ -166,16 +166,41 @@ async function updateOrderStatus(orderId, newStatus) {
       body: JSON.stringify({ status: newStatus }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        errorData.detail || `Error del servidor: ${response.status}`
-      );
+    if (response.ok) {
+      const result = await response.json();
+      alert(result.message || "Estado actualizado.");
+      fetchAndDisplayOrders(); // Refresca la lista para mostrar el nuevo estado
+      return;
     }
 
-    const result = await response.json();
-    alert(result.message); // Muestra "Estado actualizado y notificación enviada."
-    fetchAndDisplayOrders(); // Refresca la lista para mostrar el nuevo estado
+    // Si el POST no fue OK, tratamos de leer el body de error, pero
+    // aplicamos la mitigación: hacemos un GET inmediato para sincronizar
+    // el estado con lo que realmente hay en el servidor.
+    let serverError = `HTTP ${response.status}`;
+    try {
+      const errData = await response.json();
+      serverError = errData.message || errData.detail || JSON.stringify(errData);
+    } catch (e) {
+      // ignore, keep serverError as status
+    }
+
+    // Mitigación: comprobar estado real con GET /get_order/{id}
+    try {
+      const getResp = await fetch(`${BACKEND_URL}/get_order/${orderId}`);
+      if (getResp.ok) {
+        const ord = await getResp.json();
+        alert(
+          `No se pudo aplicar "${newStatus}" (server: ${serverError}). Estado actual en servidor: "${ord.status}". Sincronizado.`
+        );
+        fetchAndDisplayOrders();
+        return;
+      } else {
+        // Si el GET falla, lanzamos error para mostrar al usuario.
+        throw new Error(`GET /get_order falló con ${getResp.status}`);
+      }
+    } catch (getErr) {
+      throw new Error(`Error al actualizar: ${serverError}. Además no se pudo verificar estado: ${getErr.message}`);
+    }
   } catch (error) {
     alert(`Error al actualizar el estado: ${error.message}`);
   }

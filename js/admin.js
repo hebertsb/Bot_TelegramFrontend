@@ -1,6 +1,6 @@
 // --- CONFIGURACIÓN ---
 // Esta debe ser la URL PÚBLICA de tu servidor Python (ej. la de ngrok)
-const BACKEND_URL = "https://roomy-untempestuous-nolan.ngrok-free.dev";
+const BACKEND_URL = "https://bottelegramihc-production.up.railway.app";
 
 // --- REFERENCIAS A ELEMENTOS ---
 const ordersContainer = document.getElementById('orders-container');

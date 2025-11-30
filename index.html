@@ -28,6 +28,7 @@
         .step { display:flex; align-items:flex-start; margin-bottom:16px; position:relative; opacity:0.5; transition:all 0.25s ease; }
         .step.active, .step.completed { opacity:1; }
         .step-icon { width:30px; height:30px; border-radius:50%; background:#e0e0e0; color:#fff; display:flex; align-items:center; justify-content:center; margin-right:12px; z-index:2; font-size:14px; }
+        .step-icon .step-check { font-size:16px; line-height:1; display:inline-block; }
         .step:not(:last-child)::after { content:''; position:absolute; left:14px; top:30px; bottom:-12px; width:2px; background:#e0e0e0; z-index:1; }
         .step.completed .step-icon { background:#00c853; }
         .step.completed::after { background:#00c853; }
@@ -245,7 +246,7 @@
                             </div>
                         </div>
                         <div class="step" id="step-camino">
-                            <div class="step-icon"><span class="text-xl">🍕</span></div>
+                            <div class="step-icon">🚚</div>
                             <div class="step-content">
                                 <h4>En camino</h4>
                                 <p>El repartidor está en camino a tu dirección.</p>

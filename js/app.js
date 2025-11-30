@@ -1829,8 +1829,11 @@ async function callBackendToCreatePizza() {
 // Generador local de idea de pizza cuando el backend falla
 function generateLocalPizzaIdea(ingredientsArray, reason) {
   const ingredients = Array.isArray(ingredientsArray) ? ingredientsArray : [];
-  const core = ingredients.length > 0 ? ingredients.join(", ") : "ingredientes especiales";
-  const name = `Pizza de ${ingredients.length > 0 ? ingredients[0] : "la casa"}`;
+  const core =
+    ingredients.length > 0 ? ingredients.join(", ") : "ingredientes especiales";
+  const name = `Pizza de ${
+    ingredients.length > 0 ? ingredients[0] : "la casa"
+  }`;
   const description = `Base de tomate, queso y ${core}. Idea generada localmente.`;
   // Fórmula solicitada:
   // - Si tiene más de 4 ingredientes -> combo, precio base = 70 Bs

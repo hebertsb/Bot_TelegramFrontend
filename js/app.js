@@ -1779,14 +1779,56 @@ async function callBackendToCreatePizza() {
     document.getElementById("pizza-result").classList.remove("hidden");
   } catch (error) {
     console.error("Error al llamar al backend:", error);
-    tg.showAlert(
-      "Error de IA",
-      `No pudimos generar tu pizza. Error: ${error.message}.`
-    );
-    document.getElementById("pizza-result").classList.add("hidden");
+    // Intentar fallback local para que el UI no quede vacío
+    try {
+      const fallback = generateLocalPizzaIdea(ingredientsArray, error && error.message);
+      console.debug("Using local fallback pizza idea:", fallback);
+      document.getElementById("pizza-name").textContent = fallback.name;
+      document.getElementById("pizza-description").textContent = fallback.description;
+      // actualizar botón con precio fallback
+      try {
+        const addBtn = document.getElementById("btn-add-custom-pizza");
+        if (addBtn) {
+          addBtn.dataset.price = fallback.price.toFixed(2);
+          addBtn.dataset.name = fallback.name;
+          addBtn.dataset.emoji = fallback.emoji;
+          addBtn.textContent = `Añadir al Carrito (Bs ${fallback.price.toFixed(2)})`;
+        }
+      } catch (e) {}
+      document.getElementById("pizza-result").classList.remove("hidden");
+      try {
+        tg.showAlert(
+          "Generador IA (fallback)",
+          "No se pudo generar con la IA; se usó una idea local."
+        );
+      } catch (e) {}
+    } catch (e) {
+      console.error("Fallback local falló:", e);
+      try {
+        tg.showAlert(
+          "Error de IA",
+          `No pudimos generar tu pizza. Error: ${error.message}.`
+        );
+      } catch (e2) {
+        alert(`No pudimos generar tu pizza. Error: ${error.message}.`);
+      }
+      document.getElementById("pizza-result").classList.add("hidden");
+    }
   } finally {
     document.getElementById("loading-spinner").classList.add("hidden");
   }
+}
+
+// Generador local de idea de pizza cuando el backend falla
+function generateLocalPizzaIdea(ingredientsArray, reason) {
+  const ingredients = Array.isArray(ingredientsArray) ? ingredientsArray : [];
+  const core = ingredients.length > 0 ? ingredients.join(", ") : "ingredientes especiales";
+  const name = `Pizza de ${ingredients.length > 0 ? ingredients[0] : 'la casa'}`;
+  const description = `Base de tomate, queso y ${core}. Idea generada localmente.`;
+  // Precio estimado: base 15 + 2 por ingrediente adicional
+  const price = Math.max(10, 15 + (ingredients.length - 1) * 2);
+  const emoji = "🍕";
+  return { name, description, price, emoji, fallback: true, reason };
 }
 
 async function handleHashChange() {

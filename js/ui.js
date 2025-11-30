@@ -1,133 +1,142 @@
 // --- Modal de Sugerencias de Adicionales y Bebidas ---
 let menuCache = null; // Se guarda el menú para sugerencias
 
+// (Nota: la lógica del timeline y los overlays están definidos más abajo en este archivo.)
+// js/ui.js
+// Permitir que otras partes del app registren el menú descargado
 export function setMenuCache(menu) {
-  menuCache = menu;
+  try {
+    menuCache = menu || null;
+    // también exponer en ventana para depuración/test
+    try {
+      window._menuCache = menuCache;
+    } catch (e) {}
+  } catch (e) {
+    console.warn("setMenuCache failed", e);
+  }
 }
 
-export function mostrarModalSugerencias(productoBase, onAddItems) {
-  if (!menuCache) return;
-  // Crear overlay
-  let overlay = document.createElement("div");
-  overlay.id = "modal-sugerencias-overlay";
-  overlay.className =
-    "fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50";
+// Mostrar un modal simple para sugerir adicionales y bebidas
+// item: producto base (la pizza creada), onAddItems: callback(itemsArray, irCarrito)
+export function mostrarModalSugerencias(item, onAddItems) {
+  const menu = menuCache || window._menuCache || {};
+  const adicionalesList = Array.isArray(menu.adicionales)
+    ? menu.adicionales
+    : [];
+  const bebidasList = Array.isArray(menu.bebidas) ? menu.bebidas : [];
 
-  // Modal principal
-  let modal = document.createElement("div");
-  modal.className =
-    "bg-white rounded-lg shadow-lg p-6 max-w-md w-full animate-fade-in";
+  const renderItems = (list, prefix) =>
+    list
+      .map(
+        (it, idx) => `
+      <label class="flex items-center gap-3 p-2 border rounded mb-2 cursor-pointer">
+        <input type="checkbox" data-price="${it.price || 0}" data-name="${
+          it.name || ""
+        }" data-emoji="${
+          it.emoji || ""
+        }" class="sug-item" data-kind="${prefix}" value="${it.id || idx}">
+        <div class="flex-1">
+          <div class="font-semibold">${it.name}</div>
+          <div class="text-sm text-gray-500">Bs ${(it.price || 0).toFixed(
+            2
+          )}</div>
+        </div>
+        <div>${it.emoji || ""}</div>
+      </label>`
+      )
+      .join("");
 
-  // Generar HTML seguro para adicionales y bebidas
-  const adicionalesHtml = (menuCache.adicionales || [])
-    .map(
-      (adic) => `
-        <label class="flex items-center space-x-2">
-          <input type="checkbox" class="sug-adic" value="${
-            adic.id
-          }" data-name="${adic.name}" data-price="${adic.price}" data-emoji="${
-        adic.emoji || ""
-      }" data-cat="adicional">
-          <span>${adic.emoji || ""} ${
-        adic.name
-      } <span class="text-xs text-gray-500">(+Bs ${adic.price})</span></span>
-        </label>
-      `
-    )
-    .join("");
-
-  const bebidasHtml = (menuCache.bebidas || [])
-    .slice(0, 3)
-    .map(
-      (beb) => `
-        <label class="flex items-center space-x-2">
-          <input type="checkbox" class="sug-beb" value="${beb.id}" data-name="${
-        beb.name
-      }" data-price="${beb.price}" data-emoji="${
-        beb.emoji || ""
-      }" data-cat="bebida">
-          <span>${beb.emoji || ""} ${
-        beb.name
-      } <span class="text-xs text-gray-500">(+Bs ${beb.price})</span></span>
-        </label>
-      `
-    )
-    .join("");
-
-  modal.innerHTML = `
-    <h3 class="text-lg font-bold mb-2 text-green-700">✅ ${productoBase.name} agregada</h3>
-    <div class="mb-4">
-      <h4 class="font-semibold mb-1">¿Quieres personalizarla?</h4>
-      <div class="grid grid-cols-1 gap-2">
-        ${adicionalesHtml}
+  const html = `
+    <h3 class="text-lg font-bold mb-2">Sugerencias para ${
+      item?.name || "tu producto"
+    }</h3>
+    <div class="mb-2 text-sm text-gray-600">Elige adicionales o bebidas para este pedido.</div>
+    <div style="max-height:60vh;overflow:auto;padding-right:8px">
+      <div class="mb-4">
+        <div class="font-semibold mb-1">Adicionales</div>
+        ${
+          renderItems(adicionalesList, "adicional") ||
+          '<div class="text-sm text-gray-500">No hay adicionales.</div>'
+        }
+      </div>
+      <div class="mb-4">
+        <div class="font-semibold mb-1">Bebidas</div>
+        ${
+          renderItems(bebidasList, "bebida") ||
+          '<div class="text-sm text-gray-500">No hay bebidas.</div>'
+        }
       </div>
     </div>
-    <div class="mb-4">
-      <h4 class="font-semibold mb-1">¿Agregar bebida?</h4>
-      <div class="grid grid-cols-1 gap-2">
-        ${bebidasHtml}
-      </div>
-    </div>
-    <div class="flex justify-end gap-2">
-      <button id="btn-sug-carrito" class="px-4 py-2 rounded bg-gray-200">Agregar y ver carrito</button>
-      <button id="btn-sug-continuar" class="px-4 py-2 rounded bg-blue-600 text-white">Agregar y seguir comprando</button>
+    <div class="flex gap-2">
+      <button id="sug-add-btn" class="w-full bg-blue-600 text-white px-3 py-2 rounded">Agregar seleccionados</button>
+      <button id="sug-close-btn" class="w-full bg-white border px-3 py-2 rounded">Cerrar</button>
     </div>
   `;
 
-  overlay.appendChild(modal);
+  // crear overlay
+  const overlay = document.createElement("div");
+  overlay.className =
+    "fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4";
+  const panel = document.createElement("div");
+  panel.className = "bg-white rounded-lg shadow-lg p-6 w-full max-w-md";
+  // limitar altura del panel para que no salga de la vista en móviles
+  panel.style.maxHeight = "80vh";
+  panel.style.overflowY = "auto";
+  panel.style.boxSizing = "border-box";
+  panel.style.maxWidth = "520px";
+  panel.innerHTML = html;
+  overlay.appendChild(panel);
   document.body.appendChild(overlay);
 
-  // Acciones de los botones
-  overlay.querySelector("#btn-sug-continuar").onclick = () => {
-    const adicionales = Array.from(
-      overlay.querySelectorAll(".sug-adic:checked")
-    ).map((input) => ({
-      id: input.value,
-      name: input.dataset.name,
-      price: parseFloat(input.dataset.price),
-      emoji: input.dataset.emoji,
-      quantity: 1,
-      isAddon: true,
-    }));
-    const bebidas = Array.from(
-      overlay.querySelectorAll(".sug-beb:checked")
-    ).map((input) => ({
-      id: input.value,
-      name: input.dataset.name,
-      price: parseFloat(input.dataset.price),
-      emoji: input.dataset.emoji,
-      quantity: 1,
-      isDrink: true,
-    }));
-    document.body.removeChild(overlay);
-    if (onAddItems) onAddItems([...adicionales, ...bebidas]);
-  };
-  overlay.querySelector("#btn-sug-carrito").onclick = () => {
-    const adicionales = Array.from(
-      overlay.querySelectorAll(".sug-adic:checked")
-    ).map((input) => ({
-      id: input.value,
-      name: input.dataset.name,
-      price: parseFloat(input.dataset.price),
-      emoji: input.dataset.emoji,
-      quantity: 1,
-      isAddon: true,
-    }));
-    const bebidas = Array.from(
-      overlay.querySelectorAll(".sug-beb:checked")
-    ).map((input) => ({
-      id: input.value,
-      name: input.dataset.name,
-      price: parseFloat(input.dataset.price),
-      emoji: input.dataset.emoji,
-      quantity: 1,
-      isDrink: true,
-    }));
-    document.body.removeChild(overlay);
-    if (onAddItems) onAddItems([...adicionales, ...bebidas], true); // true = ir al carrito
-  };
+  const btnClose = overlay.querySelector("#sug-close-btn");
+  const btnAdd = overlay.querySelector("#sug-add-btn");
+  // hacer los inputs un poco más grandes y táctiles
+  try {
+    Array.from(panel.querySelectorAll("input.sug-item")).forEach((i) => {
+      i.style.width = "18px";
+      i.style.height = "18px";
+      i.style.marginRight = "8px";
+    });
+    // también asegurar que cada label use box-sizing
+    Array.from(panel.querySelectorAll("label")).forEach((l) => {
+      l.style.boxSizing = "border-box";
+      l.style.width = "100%";
+    });
+  } catch (e) {}
+  if (btnClose) btnClose.onclick = () => overlay.remove();
+  if (btnAdd) {
+    btnAdd.onclick = () => {
+      const checked = Array.from(
+        panel.querySelectorAll("input.sug-item:checked")
+      );
+      const adicionales = checked
+        .filter((i) => i.dataset.kind === "adicional")
+        .map((i) => ({
+          id: i.value,
+          name: i.dataset.name,
+          price: parseFloat(i.dataset.price || 0),
+          emoji: i.dataset.emoji,
+          isAddon: true,
+        }));
+      const bebidas = checked
+        .filter((i) => i.dataset.kind === "bebida")
+        .map((i) => ({
+          id: i.value,
+          name: i.dataset.name,
+          price: parseFloat(i.dataset.price || 0),
+          emoji: i.dataset.emoji,
+          isDrink: true,
+        }));
+      overlay.remove();
+      try {
+        if (typeof onAddItems === "function")
+          onAddItems([...adicionales, ...bebidas], true);
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+  }
 }
-// js/ui.js
 // Este archivo contendrá toda la lógica para manipular el DOM.
 
 // Referencias a "páginas"
@@ -180,7 +189,7 @@ export const addressDetailsInput = document.getElementById("address-details");
 
 // Telegram WebApp mainButton
 import { tg } from "./telegram.js";
-console.log("tg in ui:", tg);
+console.debug("tg in ui:", tg);
 // import { fetchProducts } from "./data.js";
 import { cart, myOrders, currentRating } from "./state.js";
 
@@ -316,7 +325,7 @@ const categoriasConfig = {
 };
 
 export async function showCategoriesPage() {
-  console.log("showCategoriesPage called");
+  console.debug("showCategoriesPage called");
   hideAllPages();
   mainHeader.classList.remove("hidden");
   pageCategories.classList.remove("hidden");
@@ -357,7 +366,7 @@ export async function showCategoriesPage() {
       <span class="font-semibold text-gray-700 mt-2 text-center">${config.nombre}</span>
     `;
     card.onclick = () => {
-      console.log("Category clicked:", config.nombre);
+      console.debug("Category clicked:", config.nombre);
       showProductPage(config.nombre, cat);
     };
     categoriesContainer.appendChild(card);
@@ -377,7 +386,7 @@ export async function showCategoriesPage() {
 }
 
 export async function showProductPage(categoryName, categoryKey) {
-  console.log("Nueva versión de showProductPage cargada");
+  console.debug("Nueva versión de showProductPage cargada");
   hideAllPages();
   pageProducts.classList.remove("hidden");
   if (MB && typeof MB.onClick === "function") MB.onClick(showCartPage);
@@ -501,6 +510,11 @@ export function showCartPage() {
   const shouldShowFallback =
     forceFallback || runningLocally || !(MB && typeof MB.show === "function");
   fb.style.display = shouldShowFallback ? "block" : "none";
+  // Actualizar estado del botón de pago según si hay ubicación seleccionada
+  try {
+    if (typeof window.refreshPayButtonState === "function")
+      window.refreshPayButtonState();
+  } catch (e) {}
 }
 
 export function showPaymentMethodPage() {
@@ -526,6 +540,24 @@ export async function showMyOrdersPage() {
   myOrdersList.innerHTML =
     "<div class='text-center text-gray-500'>Cargando pedidos...</div>";
 
+  // Añadir indicador de depuración ligero para ayudar en pruebas locales
+  try {
+    let dbg = document.getElementById("orders-debug");
+    if (!dbg) {
+      dbg = document.createElement("div");
+      dbg.id = "orders-debug";
+      dbg.style.fontSize = "12px";
+      dbg.style.color = "#6b7280";
+      dbg.style.marginBottom = "8px";
+      const header = pageMyOrders.querySelector("h2");
+      if (header && header.parentNode)
+        header.parentNode.insertBefore(dbg, header.nextSibling);
+    }
+    dbg.textContent = "Cargando...";
+  } catch (e) {
+    /* noop */
+  }
+
   // Refrescar pedidos desde backend antes de mostrar
   try {
     // Si la función está global, usarla; si no, fallback a local
@@ -538,15 +570,35 @@ export async function showMyOrdersPage() {
     }
     await loadOrdersFromBackend();
     myOrdersList.innerHTML = "";
+    try {
+      const dbg = document.getElementById("orders-debug");
+      if (dbg) dbg.textContent = `Pedidos cargados: ${myOrders.length}`;
+    } catch (e) {
+      /* noop */
+    }
     if (myOrders.length === 0) {
       noOrdersMsg.classList.remove("hidden");
     } else {
       noOrdersMsg.classList.add("hidden");
       myOrders.forEach((order) => {
-        const orderTotal = order.items.reduce(
-          (sum, item) => sum + item.price * item.quantity,
+        const orderTotal = (order.items || []).reduce(
+          (sum, item) => sum + (item.price || 0) * (item.quantity || 0),
           0
         );
+        // build short description: first two items
+        const itemNames = (order.items || []).map(
+          (it) => `${it.name}${it.quantity ? " x" + it.quantity : ""}`
+        );
+        const shortDesc =
+          itemNames.length === 0
+            ? "Sin artículos"
+            : itemNames.slice(0, 2).join(", ") +
+              (itemNames.length > 2 ? "..." : "");
+        const showTrackingBtn =
+          String(order.status || "").toLowerCase() !== "entregado"
+            ? `<button class="btn-view-tracking bg-blue-600 text-white px-3 py-2 rounded" data-order-id="${order.id}">Ver seguimiento</button>`
+            : `<!-- entregado: seguimiento oculto -->`;
+
         const orderHTML = `
                   <div class="bg-white rounded-lg shadow p-4 cursor-pointer hover:shadow-lg transition-all" data-order-id="${
                     order.id
@@ -557,18 +609,50 @@ export async function showMyOrdersPage() {
                           }</span>
                           <span class="text-gray-600">${order.status}</span>
                       </div>
+                      <p class="text-sm text-gray-500">${shortDesc}</p>
                       <p class="text-sm text-gray-500">${order.items.reduce(
-                        (sum, item) => sum + item.quantity,
+                        (sum, item) => sum + (item.quantity || 0),
                         0
-                      )} productos - Total: $${orderTotal.toFixed(2)}</p>
+                      )} productos - Total: Bs ${orderTotal.toFixed(2)}</p>
                       <p class="text-sm text-gray-500">Realizado el: ${new Date(
                         order.date
                       ).toLocaleString("es-ES")}</p>
-                      <p class="text-sm text-gray-500">Cliente: ${order.customer_name || order.chat_id || 'Anónimo'}</p>
+                      <p class="text-sm text-gray-500">Cliente: ${
+                        order.customer_name || order.chat_id || "Anónimo"
+                      }</p>
+                      <div class="mt-3 flex gap-2">
+                        ${showTrackingBtn}
+                        <button class="btn-view-detail bg-white border px-3 py-2 rounded" data-order-id="${
+                          order.id
+                        }">Ver detalle</button>
+                      </div>
                   </div>
               `;
         myOrdersList.innerHTML = orderHTML + myOrdersList.innerHTML;
       });
+      // Delegación de eventos para botones dentro de la lista de pedidos
+      if (!myOrdersList._hasClickHandler) {
+        myOrdersList.addEventListener("click", (ev) => {
+          const btn = ev.target.closest && ev.target.closest("button");
+          if (!btn) return;
+          const oid = btn.dataset && btn.dataset.orderId;
+          if (!oid) return;
+          if (btn.classList.contains("btn-view-tracking")) {
+            try {
+              showOrderTrackingPage(oid);
+            } catch (e) {
+              console.warn("showOrderTrackingPage missing", e);
+            }
+          } else if (btn.classList.contains("btn-view-detail")) {
+            try {
+              showOrderDetailModal(oid);
+            } catch (e) {
+              console.warn("showOrderDetailModal missing", e);
+            }
+          }
+        });
+        myOrdersList._hasClickHandler = true;
+      }
     }
   } catch (e) {
     myOrdersList.innerHTML = `<p class='text-red-600'>Error cargando pedidos: ${e.message}</p>`;
@@ -578,7 +662,7 @@ export async function showMyOrdersPage() {
 import { BACKEND_URL } from "./config.js";
 
 export async function showOrderTrackingPage(orderId) {
-  console.log("showOrderTrackingPage init", orderId);
+  console.debug("showOrderTrackingPage init", orderId);
   hideAllPages();
   pageOrderTracking.classList.remove("hidden");
   if (MB && typeof MB.hide === "function") MB.hide();
@@ -614,120 +698,290 @@ export async function showOrderTrackingPage(orderId) {
     }, 3500);
   }
 
-  async function refreshTracking() {
-    console.log("refreshTracking running for", orderId);
+  // Actualiza la línea de tiempo estática según el estado normalizado
+  function updateTimeline(normStatus) {
     try {
-      const response = await fetch(`${BACKEND_URL}/get_orders`);
-      if (!response.ok) throw new Error("No se pudo obtener pedidos");
-      const allOrders = await response.json();
-      order = allOrders.find((o) => String(o.id) === String(orderId));
-      console.log("refreshTracking fetched order:", order);
-    } catch (e) {
-      order = null;
-    }
-    if (!order) {
-      trackingOrderId.textContent = `Pedido no encontrado o error de red.`;
-      btnRateOrder.classList.add("hidden");
-      return;
-    }
+      const steps = [
+        { id: "step-confirmado", keys: ["confirm", "confirmado"] },
+        {
+          id: "step-preparacion",
+          keys: ["preparacion", "preparando", "enproceso"],
+        },
+        {
+          id: "step-asignado",
+          keys: [
+            "repartidorasignado",
+            "asignado",
+            "aceptado",
+            "repartidoraceptado",
+          ],
+        },
+        {
+          id: "step-camino",
+          keys: [
+            "encamino",
+            "en_camino",
+            "encamino",
+            "encaminar",
+            "salio",
+            "enruta",
+          ],
+        },
+        { id: "step-entregado", keys: ["entregado", "delivered"] },
+      ];
 
-    trackingOrderId.textContent = `Pedido #${order.id}`;
-    btnRateOrder.dataset.orderId = order.id;
-    // Crear/actualizar stepper de progreso
-    try {
-      let prog = document.getElementById("order-progress");
-      if (!prog) {
-        prog = document.createElement("div");
-        prog.id = "order-progress";
-        prog.style.padding = "12px";
-        prog.style.display = "flex";
-        prog.style.flexDirection = "column";
-        prog.style.gap = "8px";
-        pageOrderTracking.appendChild(prog);
-      }
-      const steps = ["Confirmado", "En preparación", "En camino", "Entregado"];
-      const status = order.status || "Pendiente";
-      prog.innerHTML = steps
-        .map((s, idx) => {
-          const statusIndex = steps.indexOf(status);
-          const stepIndex = idx;
-          const done = statusIndex > stepIndex || s === status;
-          const active = s === status;
-          const circleBg = done ? "#10b981" : "#e5e7eb";
-          const circleContent = done ? "✓" : String(idx + 1);
-          const ring = done
-            ? `box-shadow: 0 0 0 ${active ? 8 : 5}px rgba(16,185,129,${
-                active ? 0.26 : 0.18
-              });`
-            : "";
-          return `<div class="order-step" data-step="${s}" style="display:flex;align-items:center;gap:12px;padding:8px 0"><div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;${ring}"><div style="width:28px;height:28px;border-radius:50%;background:${circleBg};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">${circleContent}</div></div><div style="flex:1"><div style="font-weight:${
-            active ? "700" : "500"
-          }">${s}</div><div style="font-size:12px;color:#6b7280">${
-            idx === 0
-              ? "Hemos recibido tu pedido."
-              : idx === 1
-              ? "Tu pizza ya está en el horno."
-              : idx === 2
-              ? "El driver está en camino a tu dirección."
-              : "¡Disfruta tu comida!"
-          }</div></div></div>`;
-        })
-        .join("");
-
-      // Si el status es 'En camino', iniciar animación del repartidor
-      if (
-        String(status).toLowerCase() === "en camino" ||
-        String(status).toLowerCase() === "en_camino" ||
-        String(status).toLowerCase() === "encamino"
-      ) {
-        try {
-          if (window.startDeliveryAnimation) {
-            window.startDeliveryAnimation(order);
-          }
-        } catch (e) {
-          console.warn("startDeliveryAnimation failed", e);
+      // Determinar el índice del paso actual
+      let current = 0;
+      for (let i = 0; i < steps.length; i++) {
+        const keys = steps[i].keys || [];
+        if (keys.some((k) => normStatus.includes(k))) {
+          current = i;
+          break;
         }
       }
-      // Si entregado, parar animación
-      if (String(status).toLowerCase() === "entregado") {
-        try {
-          if (window.stopDeliveryAnimation) window.stopDeliveryAnimation();
-        } catch (e) {}
-      }
-      // Mostrar pequeño banner/tick cuando el estado cambie
-      if (lastOrderStatus && lastOrderStatus !== status) {
-        showStatusBanner(`Estado actualizado: ${status}`, "bg-green-600");
-      }
-      lastOrderStatus = status;
-    } catch (e) {
-      console.warn("update progress failed", e);
-    }
-  }
-  // Ejecutar inmediatamente y luego iniciar intervalo de polling cada 10s
-  try {
-    await refreshTracking();
-    if (!trackingInterval)
-      trackingInterval = setInterval(refreshTracking, 10000);
-    // Intentar mostrar mapa usando la función expuesta por app.js si existe
-    try {
-      if (
-        window.showTrackingMap &&
-        typeof window.showTrackingMap === "function"
-      ) {
-        // pasar el pedido actual (si está disponible)
-        const response = await fetch(`${BACKEND_URL}/get_orders`);
-        if (response.ok) {
-          const all = await response.json();
-          const ord = all.find((o) => String(o.id) === String(orderId));
-          if (ord) window.showTrackingMap(ord);
-        }
-      }
+
+      // Aplicar clases
+      steps.forEach((step, idx) => {
+        const el = document.getElementById(step.id);
+        if (!el) return;
+        el.classList.remove("active");
+        el.classList.remove("completed");
+        if (idx < current) el.classList.add("completed");
+        else if (idx === current) el.classList.add("active");
+      });
     } catch (e) {
       /* noop */
     }
+  }
+
+  async function refreshTracking() {
+    // Implementación simplificada y robusta para refrescar el tracking
+    try {
+      console.debug("refreshTracking running for", orderId);
+      const resp = await fetch(
+        `${BACKEND_URL}/get_order/${encodeURIComponent(orderId)}`
+      );
+      if (!resp.ok) throw new Error("No se pudo obtener el pedido");
+      const order = await resp.json();
+
+      // Actualizar número y dataset
+      const trackingNumEl = document.getElementById("tracking-order-number");
+      if (trackingNumEl) trackingNumEl.textContent = order.id || "-";
+      else trackingOrderId.textContent = `Pedido #${order.id || "-"}`;
+      btnRateOrder.dataset.orderId = order.id;
+
+      const s = (order.status || "").toString();
+      const normStatus = s.toLowerCase().replace(/\s+|_/g, "");
+      // Actualizar timeline visual
+      updateTimeline(normStatus);
+      const badge = document.getElementById("status-badge");
+      const title = document.getElementById("status-title");
+      const desc = document.getElementById("status-desc");
+      const driverBox = document.getElementById("driver-box");
+
+      if (badge) {
+        badge.textContent = s.toUpperCase();
+        if (/entregado/i.test(s))
+          badge.className = "status-badge status-en-camino";
+        else if (/en\s*camino|encamino|en_camino/i.test(s))
+          badge.className = "status-badge status-en-camino";
+        else badge.className = "status-badge status-pendiente";
+      }
+      if (title) {
+        if (/en\s*camino|encamino|en_camino/i.test(s))
+          title.textContent = "¡Tu pedido está cerca!";
+        else if (/entregado/i.test(s))
+          title.textContent = "¡Disfruta tu comida!";
+        else title.textContent = s || "Desconocido";
+      }
+      if (desc) {
+        if (/en\s*camino|encamino|en_camino/i.test(s))
+          desc.textContent = "El repartidor se dirige a tu ubicación.";
+        else if (/entregado/i.test(s))
+          desc.textContent = "El pedido ha sido entregado.";
+        else desc.textContent = "Procesando tu orden...";
+      }
+      if (driverBox) {
+        if (
+          /en\s*camino|encamino|en_camino|repartidorasignado|repartidor asignado|asignado|aceptado/i.test(
+            s
+          )
+        )
+          driverBox.style.display = "flex";
+        else driverBox.style.display = "none";
+      }
+
+      // Calcular ETA sencillo si hay coordenadas
+      try {
+        const etaEl = document.getElementById("tracking-eta-small");
+        if (etaEl && order && order.location) {
+          const rest =
+            order.restaurant_map_location || order.restaurant_location;
+          if (rest && rest.latitude && rest.longitude) {
+            const toRad = (v) => (v * Math.PI) / 180;
+            const R = 6371;
+            const dLat = toRad(order.location.latitude - rest.latitude);
+            const dLon = toRad(order.location.longitude - rest.longitude);
+            const a =
+              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(toRad(rest.latitude)) *
+                Math.cos(toRad(order.location.latitude)) *
+                Math.sin(dLon / 2) *
+                Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const dkm = R * c;
+            const kitchenBase = 15;
+            const kitchenPerItem = 2;
+            const itemsCount = (order.items || []).length;
+            const etaMin = Math.round(
+              kitchenBase +
+                Math.max(0, itemsCount - 1) * kitchenPerItem +
+                dkm * 2
+            );
+            etaEl.textContent = `${etaMin} min`;
+          }
+        }
+      } catch (e) {
+        console.debug("ETA calc failed", e);
+      }
+
+      // Actualizar mapa si corresponde
+      const mapStates = [
+        "repartidorasignado",
+        "repartidoraceptado",
+        "asignado",
+        "aceptado",
+        "encamino",
+        "en_camino",
+        "en camino",
+      ];
+      try {
+        if (mapStates.includes(normStatus)) {
+          // Ensure we have a client location (fallback to in-memory/window state when backend hasn't saved it yet)
+          try {
+            if (
+              !order.location ||
+              !order.location.latitude ||
+              !order.location.longitude
+            ) {
+              if (
+                window.userLocation &&
+                window.userLocation.latitude &&
+                window.userLocation.longitude
+              )
+                order.location = window.userLocation;
+              else if (typeof window !== "undefined" && window.userLocation)
+                order.location = window.userLocation;
+            }
+          } catch (e) {}
+          if (window.showTrackingMap) window.showTrackingMap(order);
+          if (window.updateTrackingMarkers) window.updateTrackingMarkers(order);
+        } else {
+          if (window.stopTrackingMarkers) window.stopTrackingMarkers();
+        }
+      } catch (e) {
+        console.warn("updateTrackingMarkers failed", e);
+      }
+
+      // Banner cuando cambia el estado
+      if (lastOrderStatus && lastOrderStatus !== s)
+        showStatusBanner(`Estado actualizado: ${s}`, "bg-green-600");
+      lastOrderStatus = s;
+
+      // Si entregado, detener polling
+      if (/entregado/i.test(s)) {
+        try {
+          if (trackingInterval) {
+            clearInterval(trackingInterval);
+            trackingInterval = null;
+          }
+          try {
+            btnRateOrder.classList.remove("hidden");
+          } catch (e) {}
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.warn("refreshTracking error", e);
+    }
+  }
+
+  // Ejecutar inmediatamente y luego iniciar intervalo de polling cada 5s
+  try {
+    await refreshTracking();
+    if (!trackingInterval)
+      trackingInterval = setInterval(refreshTracking, 5000);
   } catch (e) {
     console.warn("init tracking failed", e);
   }
+}
+
+// Modal de detalle rápido para un pedido
+export async function showOrderDetailModal(orderId) {
+  hideAllPages();
+  // Cargar el pedido desde el backend si es posible
+  let order = null;
+  try {
+    const resp = await fetch(
+      `${BACKEND_URL}/get_order/${encodeURIComponent(orderId)}`
+    );
+    if (resp.ok) order = await resp.json();
+  } catch (e) {
+    console.warn("Error fetching order for detail modal", e);
+  }
+  // Si no lo obtuvimos, buscar en myOrders
+  if (!order) {
+    order = (window.myOrders || []).find(
+      (o) => String(o.id) === String(orderId)
+    );
+  }
+  // Construir modal
+  const html = `
+    <h3 class="text-lg font-bold mb-2">Detalle Pedido #${orderId}</h3>
+    <div class="mb-2 text-sm text-gray-700">Estado: <strong>${
+      order?.status || "Desconocido"
+    }</strong></div>
+    <div class="mb-2 text-sm text-gray-700">Cliente: ${
+      order?.customer_name || order?.chat_id || "Anónimo"
+    }</div>
+    <div class="mb-2 text-sm text-gray-700">Dirección: ${
+      order?.address || "No disponible"
+    }</div>
+    <div class="mb-2 text-sm text-gray-700">Total: Bs ${
+      order?.total || "0.00"
+    }</div>
+    <div class="mb-2 text-sm text-gray-700">Items:</div>
+    <ul class="mb-4 text-sm text-gray-600">${(order?.items || [])
+      .map(
+        (it) =>
+          `<li>${it.name} ${it.quantity ? " x" + it.quantity : ""} - Bs ${(
+            it.price || 0
+          ).toFixed(2)}</li>`
+      )
+      .join("")}</ul>
+    <div class="flex gap-2">
+      <button id="detail-track-btn" class="w-full bg-blue-600 text-white px-3 py-2 rounded">Ver seguimiento</button>
+      <button id="detail-close-btn" class="w-full bg-white border px-3 py-2 rounded">Cerrar</button>
+    </div>
+  `;
+  // Crear overlay manualmente (no dependemos de createOverlay en app.js)
+  const overlay = document.createElement("div");
+  overlay.className =
+    "fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50";
+  overlay.innerHTML = `<div class="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">${html}</div>`;
+  document.body.appendChild(overlay);
+  // Hook botones
+  const btnClose = overlay.querySelector("#detail-close-btn");
+  const btnTrack = overlay.querySelector("#detail-track-btn");
+  if (btnClose) btnClose.onclick = () => overlay.remove();
+  if (btnTrack)
+    btnTrack.onclick = () => {
+      try {
+        overlay.remove();
+        showOrderTrackingPage(orderId);
+      } catch (e) {
+        console.warn(e);
+      }
+    };
 }
 
 export function showRateDriverPage(orderId) {
@@ -737,7 +991,9 @@ export function showRateDriverPage(orderId) {
   tg.BackButton.show();
   tg.BackButton.onClick(() => showOrderTrackingPage(orderId));
 
-  ratingOrderId.textContent = `Pedido #${orderId}`;
+  const ratingNumEl = document.getElementById("rating-order-number");
+  if (ratingNumEl) ratingNumEl.textContent = orderId;
+  else ratingOrderId.textContent = `Pedido #${orderId}`;
   btnSubmitRating.dataset.orderId = orderId;
 
   currentRating = 0;

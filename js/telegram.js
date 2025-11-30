@@ -1,4 +1,3 @@
-console.log("telegram.js loaded");
 export const tg = (function () {
   if (window.Telegram && window.Telegram.WebApp) {
     const webApp = window.Telegram.WebApp;
@@ -18,7 +17,7 @@ export const tg = (function () {
         const result = confirm(message);
         if (callback) callback(result);
       },
-      close: () => console.log("Mock WebApp.close() called"),
+      close: () => console.debug("Mock WebApp.close() called"),
       mainButton: {
         // Note: mainButton is lowercase in the actual API
         text: "",
@@ -26,60 +25,60 @@ export const tg = (function () {
         isActive: false,
         setText: function (text) {
           this.text = text;
-          console.log("Mock mainButton.setText:", text);
+          console.debug("Mock mainButton.setText:", text);
         },
         show: function () {
           this.isVisible = true;
-          console.log("Mock mainButton.show()");
+          console.debug("Mock mainButton.show()");
         },
         hide: function () {
           this.isVisible = false;
-          console.log("Mock mainButton.hide()");
+          console.debug("Mock mainButton.hide()");
         },
         enable: function () {
           this.isActive = true;
-          console.log("Mock mainButton.enable()");
+          console.debug("Mock mainButton.enable()");
         },
         disable: function () {
           this.isActive = false;
-          console.log("Mock mainButton.disable()");
+          console.debug("Mock mainButton.disable()");
         },
         onClick: (callback) => {
-          console.log("Mock mainButton.onClick registered");
+          console.debug("Mock mainButton.onClick registered");
         },
         offClick: (callback) => {
-          console.log("Mock mainButton.offClick unregistered");
+          console.debug("Mock mainButton.offClick unregistered");
         },
-        showProgress: () => console.log("Mock mainButton.showProgress()"),
-        hideProgress: () => console.log("Mock mainButton.hideProgress()"),
+        showProgress: () => console.debug("Mock mainButton.showProgress()"),
+        hideProgress: () => console.debug("Mock mainButton.hideProgress()"),
       },
       backButton: {
         isVisible: false,
         show: function () {
           this.isVisible = true;
-          console.log("Mock backButton.show()");
+          console.debug("Mock backButton.show()");
         },
         hide: function () {
           this.isVisible = false;
-          console.log("Mock backButton.hide()");
+          console.debug("Mock backButton.hide()");
         },
         onClick: (callback) => {
-          console.log("Mock backButton.onClick registered");
+          console.debug("Mock backButton.onClick registered");
         },
         offClick: (callback) => {
-          console.log("Mock backButton.offClick unregistered");
+          console.debug("Mock backButton.offClick unregistered");
         },
       },
       HapticFeedback: {
         impactOccurred: (style) =>
-          console.log(`Mock HapticFeedback.impactOccurred(${style})`),
+          console.debug(`Mock HapticFeedback.impactOccurred(${style})`),
         notificationOccurred: (type) =>
-          console.log(`Mock HapticFeedback.notificationOccurred(${type})`),
+          console.debug(`Mock HapticFeedback.notificationOccurred(${type})`),
         selectionChanged: () =>
-          console.log("Mock HapticFeedback.selectionChanged()"),
+          console.debug("Mock HapticFeedback.selectionChanged()"),
       },
       requestLocation: (successCallback, errorCallback) => {
-        console.log("Mock requestLocation called. Simulating error.");
+        console.debug("Mock requestLocation called. Simulating error.");
         if (errorCallback)
           errorCallback("User denied or location not available (mock)");
       },

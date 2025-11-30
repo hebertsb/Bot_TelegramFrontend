@@ -6,6 +6,7 @@ import {
   currentRating,
   userLocation,
   userChatId,
+  setUserLocation,
 } from "./state.js";
 import { BACKEND_URL } from "./config.js";
 import {
@@ -21,31 +22,51 @@ import {
   mostrarModalSugerencias,
   setMenuCache,
   updateCartUI,
-} from "./ui.js";
+} from "./ui.js?v=3";
 
 // --- Leaflet Tracking Map Variables ---
 let trackingMap = null;
 let trackingClientMarker = null;
 let trackingDeliveryMarker = null;
 let trackingRiderMarker = null; // marcador animado del repartidor
+let trackingTileLayer = null;
+// Flag to detect user interaction (panning/zooming) to avoid auto-recentering
+let trackingMapUserInteracted = false;
+// Inject small CSS for rider marker rotation/transform origin and center button
+try {
+  const css = `.rider-marker-icon { transform-origin: center bottom; transition: transform 250ms linear; }
+.leaflet-control-centerbtn { background:#fff; border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,0.12); padding:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.leaflet-control-centerbtn:hover { background:#f3f4f6; }
+.leaflet-control-centerbtn svg { width:20px; height:20px; display:block; }
+/* touch + pointer adjustments for mobile */
+#tracking-map, #leaflet-map, .leaflet-container { touch-action: pan-x pan-y; -ms-touch-action: pan-x pan-y; -webkit-user-select: none; user-select: none; }
+.map-container .leaflet-container { cursor: grab; }
+/* no-map overlay should not block touches when hidden */
+#no-map-msg { pointer-events: none; }
+`;
+  const s = document.createElement("style");
+  s.appendChild(document.createTextNode(css));
+  document.head.appendChild(s);
+} catch (e) {}
 // Ubicación fija del restaurante (Plaza 24 de Septiembre, Santa Cruz - usada por el backend)
 const RESTAURANT_LOCATION = {
   latitude: -17.7832662,
   longitude: -63.1820985,
-  name: "Plaza 24 de Septiembre",
+  name: "Pizzeria Nova",
 };
 // Versión ligeramente desplazada para que el icono del restaurante quede en una calle lateral
 const RESTAURANT_MAP_LOCATION = {
   latitude: RESTAURANT_LOCATION.latitude - 0.00035,
   longitude: RESTAURANT_LOCATION.longitude + 0.0006,
 };
-// Iconos embebidos (data URIs) para evitar dependencias externas en despliegues
+// Iconos (PNG externos, con fallback a data URIs si es necesario)
 const CLIENT_ICON_URI =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M16 2a8 8 0 100 16 8 8 0 000-16z' fill='%233b82f6'/><path d='M16 18c-4 0-8 6-8 8h16c0-2-4-8-8-8z' fill='%233b82f6'/></svg>";
+// Restaurant/storefront SVG (house/restaurant icon) as data URI for consistent icon
 const REST_ICON_URI =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 32 32'><circle cx='16' cy='12' r='8' fill='%23f97316'/><path d='M16 20c-3 0-6 4-6 6h12c0-2-3-6-6-6z' fill='%23f97316'/></svg>";
-const RIDER_ICON_URI =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 32 32'><rect x='6' y='12' width='20' height='8' rx='2' fill='%2310b981'/><circle cx='10' cy='22' r='3' fill='%23000'/><circle cx='22' cy='22' r='3' fill='%23000'/></svg>";
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24'><path d='M3 10.5L12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-5H9v5H4a1 1 0 0 1-1-1V10.5z' fill='%23ef4444'/><rect x='9' y='13' width='6' height='5' rx='0.6' fill='%23ffffff'/><path d='M2 9h20v2H2z' fill='%23f97316'/></svg>";
+// Reuse restaurant icon for any rider visuals to keep modal and tracking consistent
+const RIDER_ICON_URI = REST_ICON_URI;
 import {
   pageWelcome,
   mainHeader,
@@ -84,13 +105,17 @@ import {
   btnGetLocation,
   locationText,
   addressDetailsInput,
-} from "./ui.js";
+} from "./ui.js?v=3";
 
 import { fetchProducts } from "./data.js";
 // --- Tracking map DOM y función ---
 let trackingMapDiv = document.getElementById("tracking-map");
 function showTrackingMap(order) {
-  console.log("showTrackingMap called", order && order.id);
+  // Use debug log to reduce console noise in production-like runs
+  try {
+    if (typeof console !== "undefined" && console.debug)
+      console.debug("showTrackingMap", order && order.id);
+  } catch (e) {}
   // Asegurar que el contenedor exista; si no, crearlo dentro de la página de tracking
   if (!trackingMapDiv) {
     const trackingContainer = document.getElementById("page-order-tracking");
@@ -124,9 +149,123 @@ function showTrackingMap(order) {
   // Solo inicializar una vez
   if (!trackingMap) {
     trackingMap = L.map("tracking-map").setView([-17.7833, -63.1821], 14);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap",
-    }).addTo(trackingMap);
+    // Add a small custom control button to re-center the map
+    try {
+      const CenterControl = L.Control.extend({
+        options: { position: "topright" },
+        onAdd: function (map) {
+          const container = L.DomUtil.create(
+            "div",
+            "leaflet-control-centerbtn"
+          );
+          container.title = "Centrar mapa";
+          container.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a8 8 0 0 0 0-6"/><path d="M4.6 9a8 8 0 0 0 0 6"/></svg>`;
+          L.DomEvent.disableClickPropagation(container);
+          L.DomEvent.on(container, "click", function () {
+            try {
+              // reset user-interaction flag so auto-centering can operate
+              trackingMapUserInteracted = false;
+              // compute bounds including restaurant and client if present
+              const pts = [];
+              try {
+                if (
+                  trackingDeliveryMarker &&
+                  trackingDeliveryMarker.getLatLng
+                ) {
+                  const p = trackingDeliveryMarker.getLatLng();
+                  pts.push([p.lat, p.lng]);
+                }
+              } catch (e) {}
+              try {
+                if (trackingClientMarker && trackingClientMarker.getLatLng) {
+                  const p = trackingClientMarker.getLatLng();
+                  pts.push([p.lat, p.lng]);
+                }
+              } catch (e) {}
+              if (pts.length >= 2) {
+                map.fitBounds(L.latLngBounds(pts), {
+                  padding: [60, 60],
+                  maxZoom: 17,
+                });
+              } else if (pts.length === 1) {
+                map.setView(pts[0], 15);
+              } else {
+                map.setView(
+                  [
+                    RESTAURANT_MAP_LOCATION.latitude,
+                    RESTAURANT_MAP_LOCATION.longitude,
+                  ],
+                  14
+                );
+              }
+            } catch (err) {
+              console.warn("Center control failed", err);
+            }
+          });
+          return container;
+        },
+      });
+      trackingMap.addControl(new CenterControl());
+    } catch (e) {}
+    // Allow user interactions and detect them so we stop auto-recentering
+    try {
+      trackingMap.dragging &&
+        trackingMap.dragging.enable &&
+        trackingMap.dragging.enable();
+      trackingMap.touchZoom &&
+        trackingMap.touchZoom.enable &&
+        trackingMap.touchZoom.enable();
+      trackingMap.doubleClickZoom &&
+        trackingMap.doubleClickZoom.enable &&
+        trackingMap.doubleClickZoom.enable();
+      trackingMap.scrollWheelZoom &&
+        trackingMap.scrollWheelZoom.enable &&
+        trackingMap.scrollWheelZoom.enable();
+      // ensure the map container allows pointer events (in case overlays were present)
+      try {
+        const el = document.getElementById("tracking-map");
+        if (el) el.style.pointerEvents = "auto";
+      } catch (e) {}
+    } catch (e) {}
+    try {
+      trackingMap.on &&
+        trackingMap.on("dragstart", () => (trackingMapUserInteracted = true));
+      trackingMap.on &&
+        trackingMap.on("movestart", () => (trackingMapUserInteracted = true));
+      trackingMap.on &&
+        trackingMap.on("zoomstart", () => (trackingMapUserInteracted = true));
+      // when user double-clicks center control we reset flag; also reset on control click handled above
+    } catch (e) {}
+    // Guardar referencia a la capa de tiles para poder forzar redraw si hace falta
+    try {
+      // Usar mapa estilo Voyager (CartoDB) para un look más moderno
+      trackingTileLayer = L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+        {
+          attribution: "© CartoDB | © OpenStreetMap contributors",
+        }
+      ).addTo(trackingMap);
+    } catch (e) {
+      console.warn("tileLayer init failed", e);
+    }
+    // Forzar reflow/redraw una sola vez cuando el mapa esté listo (fix para contenedores ocultos)
+    try {
+      trackingMap.whenReady(() => {
+        try {
+          trackingMap.invalidateSize();
+        } catch (e) {}
+        setTimeout(() => {
+          try {
+            trackingMap.invalidateSize();
+            if (
+              trackingTileLayer &&
+              typeof trackingTileLayer.redraw === "function"
+            )
+              trackingTileLayer.redraw();
+          } catch (e) {}
+        }, 600);
+      });
+    } catch (e) {}
   } else {
     // forzar resize tras renderizar la vista
     setTimeout(() => {
@@ -160,12 +299,110 @@ function showTrackingMap(order) {
       .addTo(trackingMap)
       .bindPopup("Tu ubicación de entrega")
       .openPopup();
-    trackingMap.setView(
-      [order.location.latitude, order.location.longitude],
-      15
-    );
+    // Only auto-center to the client if the user hasn't interacted with the map
+    try {
+      if (!trackingMapUserInteracted) {
+        trackingMap.setView(
+          [order.location.latitude, order.location.longitude],
+          15
+        );
+      }
+    } catch (e) {}
+    // Forzar resize y redraw tras centrar (evita lienzo en blanco)
+    try {
+      setTimeout(() => {
+        try {
+          trackingMap.invalidateSize();
+          if (
+            trackingTileLayer &&
+            typeof trackingTileLayer.redraw === "function"
+          )
+            trackingTileLayer.redraw();
+        } catch (e) {}
+      }, 300);
+    } catch (e) {}
   }
-  // (En el futuro: agregar marker del delivery aquí)
+  // Mostrar marcador del restaurante: preferir valores enviados por el backend
+  try {
+    // Si el servidor nos dio una ubicación del restaurante, usarla (map o location)
+    const restSource =
+      (order && (order.restaurant_map_location || order.restaurant_location)) ||
+      RESTAURANT_MAP_LOCATION;
+    const restLatLng = [restSource.latitude, restSource.longitude];
+    const restIcon = L.icon({
+      iconUrl: REST_ICON_URI,
+      iconSize: [28, 28],
+      iconAnchor: [14, 28],
+    });
+    // Use backend-provided restaurant name when available, otherwise fallback to local constant
+    const restName =
+      (order && order.restaurant_location && order.restaurant_location.name) ||
+      RESTAURANT_LOCATION.name;
+    if (!trackingDeliveryMarker) {
+      trackingDeliveryMarker = L.marker(restLatLng, { icon: restIcon })
+        .addTo(trackingMap)
+        .bindPopup(restName);
+    } else {
+      try {
+        trackingDeliveryMarker.setLatLng(restLatLng);
+        trackingDeliveryMarker.setIcon(restIcon);
+        trackingDeliveryMarker.getPopup() &&
+          trackingDeliveryMarker.getPopup().setContent(restName);
+      } catch (e) {}
+    }
+  } catch (e) {}
+
+  // Si el pedido contiene la ubicación actual del driver, mostrar/actualizar marcador del repartidor
+  if (
+    order &&
+    order.driver_location &&
+    order.driver_location.latitude &&
+    order.driver_location.longitude
+  ) {
+    try {
+      const drv = order.driver_location;
+      if (!trackingRiderMarker) {
+        // Usar icono de restaurante para mayor consistencia visual
+        const riderIcon = L.icon({
+          iconUrl: REST_ICON_URI,
+          iconSize: [44, 44],
+          iconAnchor: [22, 44],
+          popupAnchor: [0, -36],
+        });
+        trackingRiderMarker = L.marker([drv.latitude, drv.longitude], {
+          icon: riderIcon,
+        })
+          .addTo(trackingMap)
+          .bindPopup("Repartidor");
+      } else {
+        // mover suavemente a la nueva posición
+        try {
+          moveRiderTo(drv.latitude, drv.longitude, 1200);
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.warn("update driver marker failed", e);
+    }
+  }
+}
+
+// Mostrar u ocultar overlay que bloquea el mapa (#no-map-msg)
+try {
+  const overlay = document.getElementById("no-map-msg");
+  if (overlay) {
+    const shouldHide = !!(
+      trackingClientMarker ||
+      trackingRiderMarker ||
+      (order &&
+        order.driver_location &&
+        order.driver_location.latitude &&
+        order.driver_location.longitude)
+    );
+    overlay.style.display = shouldHide ? "none" : "flex";
+    overlay.style.pointerEvents = shouldHide ? "none" : "auto";
+  }
+} catch (e) {
+  /* noop */
 }
 
 // Hacer accesible la función de renderizado del mapa desde el window (UI la invoca)
@@ -174,6 +411,319 @@ try {
 } catch (e) {
   /* noop */
 }
+
+// Fuerza un invalidate/redraw desde UI si hace falta
+function forceInvalidateTrackingMap() {
+  try {
+    if (!trackingMap) return;
+    try {
+      trackingMap.invalidateSize();
+    } catch (e) {}
+    try {
+      if (trackingTileLayer && typeof trackingTileLayer.redraw === "function")
+        trackingTileLayer.redraw();
+    } catch (e) {}
+    // repetir un par de veces
+    setTimeout(() => {
+      try {
+        trackingMap.invalidateSize();
+        if (trackingTileLayer && typeof trackingTileLayer.redraw === "function")
+          trackingTileLayer.redraw();
+      } catch (e) {}
+    }, 500);
+  } catch (e) {}
+}
+try {
+  window.forceInvalidateTrackingMap = forceInvalidateTrackingMap;
+} catch (e) {}
+
+// Mover el marcador del repartidor suavemente a una nueva posición
+function moveRiderTo(lat, lon, durationMs = 1500) {
+  try {
+    if (!trackingRiderMarker) {
+      const riderIcon = L.icon({
+        iconUrl: RIDER_ICON_URI,
+        iconSize: [48, 48],
+        iconAnchor: [24, 48],
+        popupAnchor: [0, -36],
+        className: "rider-marker-icon",
+      });
+      trackingRiderMarker = L.marker([lat, lon], {
+        icon: riderIcon,
+        interactive: true,
+      })
+        .addTo(trackingMap)
+        .bindPopup("Repartidor");
+      // ensure marker DOM exists before adjusting
+      try {
+        if (trackingRiderMarker && trackingRiderMarker._icon) {
+          trackingRiderMarker._icon.style.transition = "transform 200ms linear";
+        }
+      } catch (e) {}
+      return;
+    }
+    const start = performance.now();
+    const from = trackingRiderMarker.getLatLng();
+    const startLat = from.lat,
+      startLon = from.lng;
+    const endLat = Number(lat),
+      endLon = Number(lon);
+    // cancelar animación previa
+    if (trackingMap && trackingMap._riderMove) {
+      try {
+        cancelAnimationFrame(trackingMap._riderMove);
+      } catch (e) {}
+      trackingMap._riderMove = null;
+    }
+    // easing function (smooth in/out)
+    function easeInOutCubic(x) {
+      return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+    }
+    function bearing(lat1, lon1, lat2, lon2) {
+      // return bearing in degrees from north
+      const toRad = (d) => (d * Math.PI) / 180;
+      const toDeg = (r) => (r * 180) / Math.PI;
+      const dLon = toRad(lon2 - lon1);
+      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+      const x =
+        Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+        Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+    function step(ts) {
+      const raw = Math.min(1, (ts - start) / durationMs);
+      const t = easeInOutCubic(raw);
+      const curLat = startLat + (endLat - startLat) * t;
+      const curLon = startLon + (endLon - startLon) * t;
+      try {
+        trackingRiderMarker.setLatLng([curLat, curLon]);
+        // rotate icon to face direction
+        try {
+          const angle = bearing(startLat, startLon, endLat, endLon);
+          if (trackingRiderMarker._icon) {
+            trackingRiderMarker._icon.style.transform = `translate3d(-50%, -100%, 0) rotate(${angle}deg)`;
+          }
+        } catch (e) {}
+      } catch (e) {}
+      if (raw < 1) trackingMap._riderMove = requestAnimationFrame(step);
+      else trackingMap._riderMove = null;
+    }
+    trackingMap._riderMove = requestAnimationFrame(step);
+  } catch (e) {
+    console.warn("moveRiderTo failed", e);
+  }
+}
+
+// Actualiza los marcadores del mapa de tracking (cliente, restaurante y repartidor)
+function updateTrackingMarkers(order) {
+  try {
+    if (!order) return;
+    if (!trackingMap) showTrackingMap(order);
+    // asegurar cliente
+    if (order.location && order.location.latitude && order.location.longitude) {
+      if (!trackingClientMarker) {
+        const icon = L.icon({
+          iconUrl: CLIENT_ICON_URI,
+          iconSize: [32, 32],
+          iconAnchor: [16, 32],
+        });
+        trackingClientMarker = L.marker(
+          [order.location.latitude, order.location.longitude],
+          { icon }
+        )
+          .addTo(trackingMap)
+          .bindPopup("Tu ubicación de entrega");
+      } else {
+        try {
+          trackingClientMarker.setLatLng([
+            order.location.latitude,
+            order.location.longitude,
+          ]);
+        } catch (e) {}
+      }
+    }
+    // restaurante (usar lo que venga desde el backend si existe)
+    const restSource =
+      (order && (order.restaurant_map_location || order.restaurant_location)) ||
+      RESTAURANT_MAP_LOCATION;
+    const restLatLng = [restSource.latitude, restSource.longitude];
+    try {
+      // Intentar usar icono PNG; si falla, crear un circleMarker de fallback
+      let created = false;
+      try {
+        const restIcon = L.icon({
+          iconUrl: REST_ICON_URI,
+          iconSize: [36, 36],
+          iconAnchor: [18, 36],
+        });
+        if (!trackingDeliveryMarker) {
+          trackingDeliveryMarker = L.marker(restLatLng, { icon: restIcon })
+            .addTo(trackingMap)
+            .bindPopup(
+              (order &&
+                order.restaurant_location &&
+                order.restaurant_location.name) ||
+                RESTAURANT_LOCATION.name
+            );
+        } else {
+          try {
+            trackingDeliveryMarker.setLatLng(restLatLng);
+            trackingDeliveryMarker.setIcon(restIcon);
+            trackingDeliveryMarker.getPopup() &&
+              trackingDeliveryMarker
+                .getPopup()
+                .setContent(
+                  (order &&
+                    order.restaurant_location &&
+                    order.restaurant_location.name) ||
+                    RESTAURANT_LOCATION.name
+                );
+          } catch (e) {}
+        }
+        created = true;
+      } catch (e) {
+        console.warn("rest icon add failed", e);
+      }
+      // Fallback: si no se creó el marcador con icono, usar un circleMarker para asegurar visibilidad
+      if (!created) {
+        try {
+          if (!trackingDeliveryMarker) {
+            trackingDeliveryMarker = L.circleMarker(restLatLng, {
+              radius: 8,
+              color: "#f97316",
+              fillColor: "#f97316",
+              fillOpacity: 0.95,
+            })
+              .addTo(trackingMap)
+              .bindPopup(
+                (order &&
+                  order.restaurant_location &&
+                  order.restaurant_location.name) ||
+                  RESTAURANT_LOCATION.name
+              );
+          } else {
+            trackingDeliveryMarker.setLatLng(restLatLng);
+          }
+        } catch (e) {
+          console.warn("fallback rest marker failed", e);
+        }
+      }
+    } catch (e) {}
+
+    // repartidor: si viene ubicación, animar hacia allí; si no viene, posicionarlo en el restaurante
+    if (
+      order.driver_location &&
+      order.driver_location.latitude &&
+      order.driver_location.longitude
+    ) {
+      moveRiderTo(
+        order.driver_location.latitude,
+        order.driver_location.longitude,
+        1200
+      );
+    } else {
+      // Si no hay ubicación del repartidor, NO posicionarlo en el restaurante.
+      // Es preferible ocultar/eliminar el marcador hasta que el driver envíe su ubicación.
+      try {
+        if (trackingRiderMarker) {
+          try {
+            trackingMap.removeLayer(trackingRiderMarker);
+          } catch (e) {}
+          trackingRiderMarker = null;
+        }
+      } catch (e) {}
+    }
+  } catch (e) {
+    console.warn("updateTrackingMarkers failed", e);
+  }
+}
+
+try {
+  window.updateTrackingMarkers = updateTrackingMarkers;
+  window.moveRiderTo = moveRiderTo;
+} catch (e) {}
+// Detener y limpiar marcadores/animaciones del mapa de tracking
+function stopTrackingMarkers() {
+  try {
+    if (trackingMap) {
+      if (trackingMap._riderMove) {
+        try {
+          cancelAnimationFrame(trackingMap._riderMove);
+        } catch (e) {}
+        trackingMap._riderMove = null;
+      }
+      if (trackingMap._routeRider) {
+        try {
+          cancelAnimationFrame(trackingMap._routeRider);
+        } catch (e) {}
+        trackingMap._routeRider = null;
+      }
+      if (trackingMap._routeLine) {
+        try {
+          trackingMap.removeLayer(trackingMap._routeLine);
+        } catch (e) {}
+        trackingMap._routeLine = null;
+      }
+    }
+    // AUTO-ZOOM / FIT BOUNDS: asegurar que repartidor + cliente (y restaurante) queden visibles
+    try {
+      const points = [];
+      if (trackingDeliveryMarker && trackingDeliveryMarker.getLatLng) {
+        const p = trackingDeliveryMarker.getLatLng();
+        if (p && !isNaN(p.lat)) points.push([p.lat, p.lng]);
+      }
+      if (trackingClientMarker && trackingClientMarker.getLatLng) {
+        const p = trackingClientMarker.getLatLng();
+        if (p && !isNaN(p.lat)) points.push([p.lat, p.lng]);
+      }
+      if (trackingRiderMarker && trackingRiderMarker.getLatLng) {
+        const p = trackingRiderMarker.getLatLng();
+        if (p && !isNaN(p.lat)) points.push([p.lat, p.lng]);
+      }
+      if (!trackingMapUserInteracted) {
+        if (points.length >= 2) {
+          try {
+            const bounds = L.latLngBounds(points);
+            trackingMap.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
+          } catch (e) {}
+        } else if (points.length === 1) {
+          try {
+            trackingMap.panTo(points[0]);
+            trackingMap.setZoom(15);
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+    if (trackingRiderMarker) {
+      try {
+        trackingMap.removeLayer(trackingRiderMarker);
+      } catch (e) {}
+      trackingRiderMarker = null;
+    }
+    if (trackingDeliveryMarker) {
+      try {
+        trackingMap.removeLayer(trackingDeliveryMarker);
+      } catch (e) {}
+      trackingDeliveryMarker = null;
+    }
+    if (trackingClientMarker) {
+      try {
+        trackingMap.removeLayer(trackingClientMarker);
+      } catch (e) {}
+      trackingClientMarker = null;
+    }
+    const ctrl = document.getElementById("tracking-eta-box");
+    if (ctrl && ctrl.parentNode)
+      try {
+        ctrl.parentNode.removeChild(ctrl);
+      } catch (e) {}
+  } catch (e) {
+    console.warn("stopTrackingMarkers failed", e);
+  }
+}
+try {
+  window.stopTrackingMarkers = stopTrackingMarkers;
+} catch (e) {}
 
 // --- Leaflet Map Variables ---
 let leafletMap = null;
@@ -217,13 +767,13 @@ async function loadOrdersFromBackend() {
     const response = await fetch(`${BACKEND_URL}/get_orders`);
     if (!response.ok) throw new Error("No se pudo obtener los pedidos");
     const allOrders = await response.json();
-    console.log("Loaded orders from backend:", allOrders.length || allOrders);
+    console.debug("Loaded orders from backend:", allOrders.length || allOrders);
     // Filtrar solo los pedidos de este usuario
     const userOrders = allOrders.filter(
       (o) => String(o.chat_id) === String(chatId)
     );
     myOrders.splice(0, myOrders.length, ...userOrders);
-    console.log(`Found ${userOrders.length} orders for chat_id=${chatId}`);
+    console.debug(`Found ${userOrders.length} orders for chat_id=${chatId}`);
   } catch (e) {
     console.error("Error leyendo pedidos del backend:", e);
     myOrders.splice(0, myOrders.length);
@@ -276,7 +826,7 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
   }
 
   const newOrder = {
-    id: `ORD-${Math.floor(100000 + Math.random() * 900000)}`,
+    id: `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
     // Items preparados: merge heurístico para anidar adicionales en pizzas
     items: (function buildItemsFromCart(c) {
       const out = [];
@@ -317,7 +867,8 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
       return out;
     })(cart),
     address: fullAddress, // <-- Enviamos la dirección de TEXTO
-    location: userLocation, // <-- Esto puede ir null si el mapa falló (¡y está bien!)
+    location:
+      userLocation || (window.userLocation ? window.userLocation : null), // prefer state, fallback to window.userLocation
     paymentMethod: paymentMethod,
     date: new Date().toISOString(),
     date_ts: Date.now(),
@@ -337,7 +888,45 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
             tg.initDataUnsafe.user.last_name || ""
           }`.trim()
         : window.userName || "") || "",
+    // Nuevos campos para la facturación: NIT/CI y teléfono (opcional)
+    customer_nit: (function () {
+      try {
+        const el = document.getElementById("customer-nit");
+        if (el && el.value) return String(el.value).trim();
+      } catch (e) {}
+      try {
+        if (window.userNIT) return String(window.userNIT).trim();
+      } catch (e) {}
+      return "";
+    })(),
+    customer_phone: (function () {
+      try {
+        const el = document.getElementById("customer-phone");
+        if (el && el.value) return String(el.value).trim();
+      } catch (e) {}
+      try {
+        if (window.userPhone) return String(window.userPhone).trim();
+      } catch (e) {}
+      return "";
+    })(),
   };
+
+  // Validación: customer_phone es requerido según contrato backend
+  try {
+    if (!newOrder.customer_phone || newOrder.customer_phone.length < 6) {
+      tg.showAlert(
+        "Teléfono requerido",
+        "Por favor ingresa un teléfono válido (ej: 70011122) para que podamos contactarte sobre el pedido."
+      );
+      return;
+    }
+  } catch (e) {
+    // si tg falla, hacer fallback a alert
+    if (!newOrder.customer_phone || newOrder.customer_phone.length < 6) {
+      alert("Por favor ingresa un teléfono válido para confirmar el pedido.");
+      return;
+    }
+  }
 
   // --- INICIO CAMBIO NOTIFICACIONES (Sugerencias 2, 3, 4) ---
   // Referencia segura al MainButton (si existe)
@@ -383,7 +972,7 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
       order: newOrder,
       notify_restaurant: true,
     };
-    console.log("Submitting order payload:", payload);
+    console.debug("Submitting order payload:", payload);
 
     const response = await fetch(`${BACKEND_URL}/submit_order`, {
       method: "POST",
@@ -431,7 +1020,12 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
     // Actualizar UI del carrito
     if (typeof updateCartUI === "function") updateCartUI();
     // Limpiar ubicación usada (guardada en window)
-    window.userLocation = null;
+    try {
+      window.userLocation = null;
+    } catch (e) {}
+    try {
+      if (typeof setUserLocation === "function") setUserLocation(null);
+    } catch (e) {}
     locationText.textContent = "";
     addressDetailsInput.value = "";
 
@@ -444,7 +1038,7 @@ async function showFinalConfirmation(paymentMethod, paymentDetails = null) {
       try {
         tg.close();
       } catch (e) {
-        console.log("Closing WebApp");
+        console.debug("Closing WebApp");
       }
     });
   } catch (error) {
@@ -530,7 +1124,12 @@ async function pollOrderStatus(orderId, durationMs = 30000, intervalMs = 5000) {
                     icon: restIcon,
                   })
                     .addTo(trackingMap)
-                    .bindPopup(`${RESTAURANT_LOCATION.name}`);
+                    .bindPopup(
+                      (order &&
+                        order.restaurant_location &&
+                        order.restaurant_location.name) ||
+                        RESTAURANT_LOCATION.name
+                    );
                   try {
                     trackingDeliveryMarker.openPopup();
                   } catch (e) {}
@@ -658,8 +1257,9 @@ async function pollOrderStatus(orderId, durationMs = 30000, intervalMs = 5000) {
                   // crear el marcador del repartidor si no existe
                   const riderIcon = L.icon({
                     iconUrl: RIDER_ICON_URI,
-                    iconSize: [36, 36],
-                    iconAnchor: [18, 18],
+                    iconSize: [48, 48],
+                    iconAnchor: [24, 48],
+                    popupAnchor: [0, -40],
                   });
                   if (!trackingRiderMarker) {
                     trackingRiderMarker = L.marker(rest, { icon: riderIcon })
@@ -736,9 +1336,45 @@ async function pollOrderStatus(orderId, durationMs = 30000, intervalMs = 5000) {
             } catch (e) {
               /* noop */
             }
-            // Mostrar el estado textual en el banner mientras hacemos polling
+            // Mostrar un banner amigable basado en el estado mientras hacemos polling
             try {
-              showTempBanner(`Estado: ${order.status}`);
+              const sRaw = (order.status || "").toString();
+              const norm = sRaw.toLowerCase().replace(/\s+|_/g, "");
+              let msg = `Estado: ${sRaw}`;
+              let bg = "#2563eb"; // azul por defecto
+              if (/confirm|confirmado/.test(norm)) {
+                msg = "Pedido confirmado";
+                bg = "#2563eb"; // azul
+              } else if (
+                /repartidorasignado|repartidoraceptado|asignado|aceptado/.test(
+                  norm
+                )
+              ) {
+                msg = "Repartidor asignado";
+                bg = "#2563eb"; // azul (mantener visibilidad)
+              } else if (/encamino|en_camino|enruta|salio|enruta/.test(norm)) {
+                msg = "Repartidor en camino";
+                bg = "#10b981"; // verde
+              } else if (/entregado|delivered/.test(norm)) {
+                msg = "Pedido entregado";
+                bg = "#6b7280"; // gris
+              } else {
+                msg = sRaw || "Estado desconocido";
+                bg = "#2563eb";
+              }
+              // Aplicar mensaje y color al banner temporal
+              try {
+                const b = document.getElementById("order-poll-banner");
+                if (b) {
+                  b.textContent = msg;
+                  b.style.background = bg;
+                  b.style.opacity = "1";
+                } else {
+                  showTempBanner(msg);
+                  const b2 = document.getElementById("order-poll-banner");
+                  if (b2) b2.style.background = bg;
+                }
+              } catch (e) {}
             } catch (e) {
               /* noop */
             }
@@ -881,7 +1517,9 @@ function showOrderTicket(order, facturaUrl, onClose) {
   const html = `
     <h3 style="font-size:18px;margin-bottom:8px">Pedido Recibido</h3>
     <div style="margin-bottom:8px">Pedido: <strong>${order.id}</strong></div>
-    <div style="margin-bottom:8px">Cliente: ${order.customer_name || order.chat_id || 'Anónimo'}</div>
+    <div style="margin-bottom:8px">Cliente: ${
+      order.customer_name || order.chat_id || "Anónimo"
+    }</div>
     <div style="margin-bottom:8px">Fecha: ${formatDateLocal(order.date)}</div>
     <div style="margin-bottom:8px">Dirección: ${order.address || ""}</div>
     ${etaHtml}
@@ -914,7 +1552,7 @@ function showOrderTicket(order, facturaUrl, onClose) {
         window.open(facturaUrl, "_blank");
       }
     } catch (e) {
-      console.log("Open factura", e);
+      console.debug("Open factura", e);
     }
   };
   ov.querySelector("#btn-view-orders").onclick = () => {
@@ -1178,6 +1816,106 @@ export function init() {
     showOrderTrackingPage(orderId);
   });
 
+  // Helper: validar que el usuario haya seleccionado ubicación y datos mínimos antes de pagar
+  function ensureLocationSelected() {
+    const currentLocation = window.userLocation || userLocation;
+    const addressDetails =
+      (addressDetailsInput &&
+        addressDetailsInput.value &&
+        addressDetailsInput.value.trim()) ||
+      "";
+    if (!currentLocation) {
+      try {
+        tg.showAlert(
+          "Ubicación requerida",
+          "Por favor selecciona tu ubicación en el mapa antes de pagar."
+        );
+      } catch (e) {
+        alert("Por favor selecciona tu ubicación en el mapa antes de pagar.");
+      }
+      return false;
+    }
+    if (!addressDetails || addressDetails.length < 4) {
+      try {
+        tg.showAlert(
+          "Dirección incompleta",
+          "Por favor escribe los detalles de la dirección (número, referencia).",
+          "Entendido"
+        );
+      } catch (e) {
+        alert(
+          "Por favor escribe los detalles de la dirección (número, referencia)."
+        );
+      }
+      return false;
+    }
+    // Validación ligera de teléfono (si está presente en el formulario)
+    try {
+      const phoneEl = document.getElementById("customer-phone");
+      if (phoneEl) {
+        const phoneVal = (phoneEl.value || "").trim();
+        if (phoneVal.length < 6) {
+          try {
+            tg.showAlert(
+              "Teléfono requerido",
+              "Ingresa un teléfono válido para que el repartidor pueda contactarte."
+            );
+          } catch (e) {
+            alert(
+              "Ingresa un teléfono válido para que el repartidor pueda contactarte."
+            );
+          }
+          return false;
+        }
+      }
+    } catch (e) {}
+    return true;
+  }
+
+  // Helper: habilitar/deshabilitar botones de pago (MainButton y fallback) según si hay ubicación
+  function refreshPayButtonState() {
+    try {
+      const hasLocation = !!(
+        (window.userLocation &&
+          window.userLocation.latitude &&
+          window.userLocation.longitude) ||
+        (userLocation && userLocation.latitude && userLocation.longitude)
+      );
+      // Fallback button (in-page)
+      const fb = document.getElementById("fallback-pay-button");
+      if (fb) {
+        fb.disabled = !hasLocation;
+        fb.style.opacity = hasLocation ? "1" : "0.5";
+        fb.style.pointerEvents = hasLocation ? "auto" : "none";
+      }
+      // Telegram MainButton (if available)
+      try {
+        const MB_local =
+          tg && (tg.MainButton || tg.mainButton || tg.main_button || null);
+        if (MB_local) {
+          if (
+            typeof MB_local.enable === "function" &&
+            typeof MB_local.disable === "function"
+          ) {
+            if (hasLocation) MB_local.enable();
+            else MB_local.disable();
+          } else if (
+            typeof MB_local.show === "function" &&
+            typeof MB_local.hide === "function"
+          ) {
+            if (hasLocation) MB_local.show();
+            else MB_local.hide();
+          }
+        }
+      } catch (e) {}
+    } catch (e) {
+      /* noop */
+    }
+  }
+  try {
+    window.refreshPayButtonState = refreshPayButtonState;
+  } catch (e) {}
+
   btnGetLocation.addEventListener("click", () => {
     // Mostrar modal del mapa
     mapModal.classList.remove("hidden");
@@ -1187,31 +1925,127 @@ export function init() {
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "© OpenStreetMap",
         }).addTo(leafletMap);
-        leafletMarker = L.marker([-17.7833, -63.1821], {
-          draggable: true,
-        }).addTo(leafletMap);
+        // usar un icono claro para la ubicación del cliente (evita confusión con el repartidor)
+        try {
+          // Icono de pin claro para la ubicación del cliente (más grande y legible)
+          const CLIENT_PIN_SVG =
+            "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='48' viewBox='0 0 24 30'><path d='M12 0C7 0 3 4 3 9c0 7.5 9 21 9 21s9-13.5 9-21c0-5-4-9-9-9z' fill='%23ef4444'/><circle cx='12' cy='9' r='3' fill='white'/></svg>";
+          const clientIconSmall = L.icon({
+            iconUrl: CLIENT_PIN_SVG,
+            iconSize: [36, 48],
+            iconAnchor: [18, 48],
+            popupAnchor: [0, -40],
+          });
+          leafletMarker = L.marker([-17.7833, -63.1821], {
+            draggable: true,
+            icon: clientIconSmall,
+            title: "Tu ubicación (arrastra para ajustar)",
+          }).addTo(leafletMap);
+        } catch (e) {
+          leafletMarker = L.marker([-17.7833, -63.1821], {
+            draggable: true,
+          }).addTo(leafletMap);
+        }
         // Añadir marcador fijo del restaurante en el mapa modal para referencia del usuario
         const restLatLng = [
           RESTAURANT_MAP_LOCATION.latitude,
           RESTAURANT_MAP_LOCATION.longitude,
         ];
         try {
+          // Usar icono de restaurante más grande en el modal para mayor visibilidad
           const restIconSmall = L.icon({
             iconUrl: REST_ICON_URI,
-            iconSize: [24, 24],
-            iconAnchor: [12, 24],
+            iconSize: [44, 44],
+            iconAnchor: [22, 44],
+            popupAnchor: [0, -36],
           });
           leafletRestaurantMarker = L.marker(restLatLng, {
             icon: restIconSmall,
           })
             .addTo(leafletMap)
-            .bindPopup(RESTAURANT_LOCATION.name);
+            .bindPopup(`<strong>${RESTAURANT_LOCATION.name}</strong>`);
+          // Abrir popup para que el usuario identifique fácilmente el restaurante
+          try {
+            leafletRestaurantMarker.openPopup();
+            leafletRestaurantMarker.setZIndexOffset(1000);
+            leafletRestaurantMarker.bringToFront();
+          } catch (e) {}
         } catch (e) {
           console.warn(
             "No se pudo añadir el marcador del restaurante en el mapa modal (icono):",
             e
           );
         }
+        // Limpiar posibles marcadores indeseados (p.ej. si un marcador de tracking quedó conectado)
+        try {
+          setTimeout(() => {
+            try {
+              const allowed = new Set();
+              try {
+                if (
+                  leafletRestaurantMarker &&
+                  leafletRestaurantMarker.options &&
+                  leafletRestaurantMarker.options.icon &&
+                  leafletRestaurantMarker.options.icon.options &&
+                  leafletRestaurantMarker.options.icon.options.iconUrl
+                )
+                  allowed.add(
+                    String(leafletRestaurantMarker.options.icon.options.iconUrl)
+                  );
+              } catch (e) {}
+              try {
+                if (
+                  leafletMarker &&
+                  leafletMarker.options &&
+                  leafletMarker.options.icon &&
+                  leafletMarker.options.icon.options &&
+                  leafletMarker.options.icon.options.iconUrl
+                )
+                  allowed.add(
+                    String(leafletMarker.options.icon.options.iconUrl)
+                  );
+              } catch (e) {}
+              // List all marker layers for debugging
+              leafletMap.eachLayer((layer) => {
+                try {
+                  if (layer instanceof L.Marker) {
+                    const iconUrl =
+                      (layer.options &&
+                        layer.options.icon &&
+                        layer.options.icon.options &&
+                        layer.options.icon.options.iconUrl) ||
+                      null;
+                    if (iconUrl)
+                      console.debug("leafletMap marker iconUrl:", iconUrl);
+                    // Remove marker if it's not the restaurant or client marker OR if icon name suggests a motorcycle
+                    const lower = iconUrl ? String(iconUrl).toLowerCase() : "";
+                    if (
+                      (layer !== leafletRestaurantMarker &&
+                        layer !== leafletMarker) ||
+                      /motor|moto|motorcycle|motoicleta/.test(lower)
+                    ) {
+                      // additional safeguard: if iconUrl is explicitly allowed, keep it
+                      if (iconUrl && allowed.has(String(iconUrl))) return;
+                      try {
+                        console.info(
+                          "Removing unexpected marker from modal map",
+                          iconUrl
+                        );
+                        leafletMap.removeLayer(layer);
+                      } catch (e) {
+                        console.warn("failed remove layer", e);
+                      }
+                    }
+                  }
+                } catch (e) {
+                  /* ignore per-layer errors */
+                }
+              });
+            } catch (e) {
+              console.warn("modal cleanup failed", e);
+            }
+          }, 250);
+        } catch (e) {}
         // Fallback visual si el icono externo falla o no se creó: dibujar un circleMarker
         if (!leafletRestaurantMarker) {
           try {
@@ -1229,6 +2063,45 @@ export function init() {
               e
             );
           }
+        }
+        // Asegurar que al abrir el modal se muestre tanto el restaurante como el marcador del usuario
+        try {
+          const points = [restLatLng];
+          if (leafletMarker && leafletMarker.getLatLng) {
+            const lm = leafletMarker.getLatLng();
+            points.push([lm.lat, lm.lng]);
+          }
+          // Si existe ventana.userLocation preferir incluirla explicitamente
+          if (
+            window.userLocation &&
+            window.userLocation.latitude &&
+            window.userLocation.longitude
+          ) {
+            points.push([
+              window.userLocation.latitude,
+              window.userLocation.longitude,
+            ]);
+          }
+          // Quitar duplicados y crear bounds
+          const uniq = {};
+          const pts = points.filter((p) => {
+            const key = `${p[0].toFixed(6)},${p[1].toFixed(6)}`;
+            if (uniq[key]) return false;
+            uniq[key] = true;
+            return true;
+          });
+          if (pts.length === 1) {
+            leafletMap.setView(pts[0], 15);
+          } else {
+            const bounds = L.latLngBounds(pts);
+            leafletMap.fitBounds(bounds.pad ? bounds.pad(0.15) : bounds, {
+              padding: [20, 20],
+            });
+          }
+        } catch (e) {
+          try {
+            leafletMap.invalidateSize();
+          } catch (err) {}
         }
       } else {
         leafletMap.invalidateSize();
@@ -1264,6 +2137,16 @@ export function init() {
       const latlng = leafletMarker.getLatLng();
       // Guardar en window para evitar reasignar la import
       window.userLocation = { latitude: latlng.lat, longitude: latlng.lng };
+      // También actualizar el estado compartido para que newOrder.location lo lea
+      try {
+        if (typeof setUserLocation === "function")
+          setUserLocation(window.userLocation);
+      } catch (e) {}
+      try {
+        // actualizar estado de botones de pago
+        if (typeof refreshPayButtonState === "function")
+          refreshPayButtonState();
+      } catch (e) {}
       // Calcular ETA aproximado usando la ubicación del restaurante fija
       try {
         const dkm = computeDistanceKm(
@@ -1300,7 +2183,7 @@ export function init() {
                 const display =
                   pdata.display_name || pdata.address || JSON.stringify(pdata);
                 addressDetailsInput.value = display;
-                console.log("Reverse geocode: used backend proxy result");
+                console.debug("Reverse geocode: used backend proxy result");
                 // Mostrar indicador breve de origen
                 try {
                   let badge = document.getElementById("address-source");
@@ -1346,7 +2229,7 @@ export function init() {
                 const data = await resp.json();
                 if (data && data.display_name) {
                   addressDetailsInput.value = data.display_name;
-                  console.log("Reverse geocode: used Nominatim result");
+                  console.debug("Reverse geocode: used Nominatim result");
                   success = true;
                 }
               }
@@ -1450,10 +2333,17 @@ export function init() {
   });
 
   btnPayCash.addEventListener("click", () => {
+    // Validar que el usuario haya seleccionado ubicación/detalles antes de pagar
+    try {
+      if (!ensureLocationSelected()) return;
+    } catch (e) {}
     const total = cart.reduce((s, i) => s + i.price * (i.quantity || 1), 0);
     showCashConfirmation(() => showFinalConfirmation("Efectivo"));
   });
   btnPayCard.addEventListener("click", () => {
+    try {
+      if (!ensureLocationSelected()) return;
+    } catch (e) {}
     showCardPaymentModal((cardData) =>
       showFinalConfirmation("Tarjeta (Simulado)", cardData)
     );

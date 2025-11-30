@@ -7,6 +7,34 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="css/style.css">
+    <!-- Fuente Google para mejor tipografía en tracking -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        /* Tracking card styles (mejora visual) */
+        body { font-family: 'Poppins', sans-serif; }
+        #tracking-card { max-width: 720px; margin: 8px auto; background: transparent; }
+        .map-container { position: relative; height: 340px; width: 100%; background: #eee; border-radius: 16px; overflow: hidden; }
+        #tracking-map { height: 100%; width: 100%; }
+        .info-section { padding: 16px; background: white; border-radius: 0 0 12px 12px; margin-top: -6px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+        .status-badge { display:inline-block; padding:6px 12px; border-radius:999px; font-weight:600; font-size:0.85em; }
+        .status-en-camino { background:#e3fcef; color:#007a3d; }
+        .status-pendiente { background:#fff4e5; color:#b45309; }
+        .driver-info { display:flex; align-items:center; gap:12px; margin-top:12px; padding:10px; background:#f8f9fa; border-radius:10px; }
+        .driver-avatar { width:48px; height:48px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; font-size:22px; box-shadow:0 4px 10px rgba(0,0,0,0.06); }
+        .leaflet-marker-icon { transition: transform 0.7s linear, opacity 0.4s linear; }
+        #no-map-msg { display:none; }
+        /* Timeline / stepper styles */
+        .timeline { margin-top: 16px; position: relative; }
+        .step { display:flex; align-items:flex-start; margin-bottom:16px; position:relative; opacity:0.5; transition:all 0.25s ease; }
+        .step.active, .step.completed { opacity:1; }
+        .step-icon { width:30px; height:30px; border-radius:50%; background:#e0e0e0; color:#fff; display:flex; align-items:center; justify-content:center; margin-right:12px; z-index:2; font-size:14px; }
+        .step:not(:last-child)::after { content:''; position:absolute; left:14px; top:30px; bottom:-12px; width:2px; background:#e0e0e0; z-index:1; }
+        .step.completed .step-icon { background:#00c853; }
+        .step.completed::after { background:#00c853; }
+        .step.active .step-icon { background:#ff9800; box-shadow:0 0 0 4px rgba(255,152,0,0.12); }
+        .step-content h4 { margin:0; font-size:1em; color:#333; }
+        .step-content p { margin:2px 0 0; font-size:0.85em; color:#666; }
+    </style>
 </head>
 <body class="bg-gray-100">
 
@@ -119,6 +147,18 @@
                 <p id="location-text" class="text-sm text-gray-500 mt-2 text-center h-4"></p>
                 <label for="address-details" class="block text-sm font-medium text-gray-700 mt-2">Detalles (Ej: N° de Casa, Depto):</label>
                 <input type="text" id="address-details" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ej: Casa 123, Depto 4B">
+                
+                                <!-- Campos para facturación: teléfono obligatorio, NIT opcional -->
+                                <div class="mt-3 grid grid-cols-1 gap-3">
+                                    <div>
+                                        <label for="customer-phone" class="block text-sm font-medium text-gray-700">Teléfono (WhatsApp / Móvil)</label>
+                                        <input type="tel" id="customer-phone" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ej: 70011122" inputmode="tel">
+                                    </div>
+                                    <div>
+                                        <label for="customer-nit" class="block text-sm font-medium text-gray-700">NIT / CI (Opcional para factura)</label>
+                                        <input type="text" id="customer-nit" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ej: 11122233">
+                                    </div>
+                                </div>
             </div>
             <!-- --- FIN CAMBIO DE MAPA --- -->
 
@@ -143,7 +183,7 @@
                     <span class="text-5xl">💳</span>
                     <div class="text-left">
                         <h3 class="text-lg font-semibold">Tarjeta de Crédito/Débito</h3>
-                        <p class="text-gray-500">(Simulación) Se procesará el pago de forma segura.</p>
+                        <p class="text-gray-500"> Se procesará el pago de forma segura.</p>
                     </div>
                 </button>
             </div>
@@ -170,53 +210,59 @@
                 Volver a Mis Pedidos
             </div>
             <h2 class="text-2xl font-bold text-gray-900 mb-2">Seguimiento</h2>
-            <p id="tracking-order-id" class="text-sm text-gray-500 mb-6">Pedido #12345</p>
+            <p id="tracking-order-id" class="text-sm text-gray-500 mb-6">Pedido #<span id="tracking-order-number"></span></p>
 
-            <!-- Mapa de seguimiento -->
-            <div class="mb-6">
-                <h3 class="text-lg font-semibold text-gray-800 mb-2">Mapa de Entrega</h3>
-                <div id="tracking-map" style="height: 250px; width: 100%;" class="rounded"></div>
+            <!-- Nuevo diseño Tracking Card (v3 con timeline) -->
+            <div id="tracking-card">
+                <div id="map-container" class="map-container map-hidden">
+                    <div id="tracking-map"></div>
+                    <div id="no-map-msg" style="position:absolute; top:0; left:0; width:100%; height:100%; display:none; align-items:center; justify-content:center; background:rgba(255,255,255,0.85); color:#444; font-size:14px;">El mapa se mostrará cuando el repartidor esté asignado o en camino</div>
+                </div>
+                <div class="info-section">
+                    <h2 style="text-align:center;">Seguimiento</h2>
+                    <p style="text-align:center; color:#888;" id="order-id-display"></p>
+                    <!-- TIMELINE (estático en HTML) -->
+                    <div class="timeline" id="tracking-timeline">
+                        <div class="step" id="step-confirmado">
+                            <div class="step-icon"><i class="fas fa-check"></i></div>
+                            <div class="step-content">
+                                <h4>Confirmado</h4>
+                                <p>Hemos recibido tu pedido.</p>
+                            </div>
+                        </div>
+                        <div class="step" id="step-preparacion">
+                            <div class="step-icon"><i class="fas fa-fire"></i></div>
+                            <div class="step-content">
+                                <h4>En preparación</h4>
+                                <p>Tu pizza ya está en el horno.</p>
+                            </div>
+                        </div>
+                        <div class="step" id="step-asignado">
+                            <div class="step-icon"><i class="fas fa-user"></i></div>
+                            <div class="step-content">
+                                <h4>Repartidor Asignado</h4>
+                                <p>Conductor asignado: viene al restaurante.</p>
+                            </div>
+                        </div>
+                        <div class="step" id="step-camino">
+                            <div class="step-icon"><span class="text-xl">🍕</span></div>
+                            <div class="step-content">
+                                <h4>En camino</h4>
+                                <p>El repartidor está en camino a tu dirección.</p>
+                            </div>
+                        </div>
+                        <div class="step" id="step-entregado">
+                            <div class="step-icon"><i class="fas fa-gift"></i></div>
+                            <div class="step-content">
+                                <h4>Entregado</h4>
+                                <p>¡Disfruta tu comida!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="bg-white p-6 rounded-lg shadow">
-                <!-- Paso 1: Confirmado -->
-                <div id="step-confirmado" class="step">
-                    <div class="step-icon">✓</div>
-                    <div class="step-content">
-                        <h4>Pedido Confirmado</h4>
-                        <p>Hemos recibido tu pedido.</p>
-                    </div>
-                </div>
-                <div class="step-line ml-5 h-12"></div>
-                <!-- Paso 2: En Preparación -->
-                <div id="step-preparando" class="step">
-                    <div class="step-icon">🍳</div>
-                    <div class="step-content">
-                        <h4>En Preparación</h4>
-                        <p>Tu pizza ya está en el horno.</p>
-                    </div>
-                </div>
-                <div class="step-line ml-5 h-12"></div>
-                <!-- Paso 3: En Camino -->
-                <div id="step-encamino" class="step">
-                    <div class="step-icon">🛵</div>
-                    <div class="step-content">
-                        <h4>En Camino</h4>
-                        <p>El driver está en camino a tu dirección.</p>
-                    </div>
-                </div>
-                <div class="step-line ml-5 h-12"></div>
-                <!-- Paso 4: Entregado -->
-                <div id="step-entregado" class="step">
-                    <div class="step-icon">🎉</div>
-                    <div class="step-content">
-                        <h4>Entregado</h4>
-                        <p>¡Disfruta tu comida!</p>
-                    </div>
-                </div>
-            </div>
-
-            <button id="btn-rate-order" class="hidden mt-6 w-full bg-yellow-500 text-white px-6 py-3 rounded-lg font-semibold text-lg hover:bg-yellow-600 transition-colors shadow-md">
+            <button id="btn-rate-order" class="hidden mt-2 w-full bg-yellow-500 text-white px-6 py-3 rounded-lg font-semibold text-lg hover:bg-yellow-600 transition-colors shadow-md">
                 Valorar este Pedido
             </button>
         </main>
@@ -228,7 +274,7 @@
                 Volver
             </div>
             <h2 class="text-2xl font-bold text-gray-900 mb-2">Valorar Pedido</h2>
-            <p id="rating-order-id" class="text-sm text-gray-500 mb-6">Pedido #12345</p>
+            <p id="rating-order-id" class="text-sm text-gray-500 mb-6">Pedido #<span id="rating-order-number"></span></p>
 
             <div class="bg-white p-6 rounded-lg shadow text-center">
                 <h3 class="text-lg font-semibold text-gray-800 mb-3">¿Qué tal estuvo tu pedido?</h3>
@@ -254,6 +300,6 @@
     <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="js/main.js" type="module"></script>
+    <script src="js/main.js?v=3" type="module"></script>
 </body>
 </html>

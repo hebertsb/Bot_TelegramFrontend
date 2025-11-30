@@ -1,6 +1,6 @@
 // --- CONFIGURACIÓN ---
-// Esta debe ser la URL PÚBLICA de tu servidor Python (ej. la de ngrok)
-const BACKEND_URL = "https://bottelegramihc-production.up.railway.app";
+// La URL del backend se importa desde `js/config.js` para evitar duplicados
+import { BACKEND_URL } from "./config.js";
 
 // --- REFERENCIAS A ELEMENTOS ---
 const ordersContainer = document.getElementById("orders-container");
@@ -179,7 +179,8 @@ async function updateOrderStatus(orderId, newStatus) {
     let serverError = `HTTP ${response.status}`;
     try {
       const errData = await response.json();
-      serverError = errData.message || errData.detail || JSON.stringify(errData);
+      serverError =
+        errData.message || errData.detail || JSON.stringify(errData);
     } catch (e) {
       // ignore, keep serverError as status
     }
@@ -199,7 +200,9 @@ async function updateOrderStatus(orderId, newStatus) {
         throw new Error(`GET /get_order falló con ${getResp.status}`);
       }
     } catch (getErr) {
-      throw new Error(`Error al actualizar: ${serverError}. Además no se pudo verificar estado: ${getErr.message}`);
+      throw new Error(
+        `Error al actualizar: ${serverError}. Además no se pudo verificar estado: ${getErr.message}`
+      );
     }
   } catch (error) {
     alert(`Error al actualizar el estado: ${error.message}`);

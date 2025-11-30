@@ -19,8 +19,12 @@ Qué hace:
 param(
     [string]$ChatId = "LOCAL_TEST",
     [string]$Backend = "",
+    [string]$CustomerNIT = "",
+    [string]$CustomerPhone = "70011122",
     [int]$MaxSeconds = 30,
-    [int]$Interval = 5
+    [int]$Interval = 5,
+    [switch]$SimulateStates = $false,
+    [int]$SimulateInterval = 5
 )
 
 Set-StrictMode -Version Latest
@@ -71,6 +75,10 @@ $order = [pscustomobject]@{
     status        = "Pendiente"
     total         = 35.00
 }
+
+# Incluir datos de facturación si fueron provistos (usar Add-Member para PSCustomObject)
+if (-not [string]::IsNullOrWhiteSpace($CustomerPhone)) { $order | Add-Member -NotePropertyName customer_phone -NotePropertyValue $CustomerPhone -Force }
+if (-not [string]::IsNullOrWhiteSpace($CustomerNIT)) { $order | Add-Member -NotePropertyName customer_nit -NotePropertyValue $CustomerNIT -Force }
 
 $payload = [pscustomobject]@{
     chat_id           = $ChatId
@@ -141,6 +149,45 @@ else {
     $orderId = $order.id
 }
 Write-Host "Respuesta submit_order. order_id: $orderId" -ForegroundColor Green
+
+# Si se pidió simular estados, publicar una secuencia de updates al backend
+if ($SimulateStates) {
+    Write-Host "Simulación de estados ACTIVADA. Intervalo entre estados: $SimulateInterval s" -ForegroundColor Magenta
+    $states = @(
+        'En preparación',
+        'Repartidor Asignado',
+        'En camino',
+        'Recogido',
+        'Entregado'
+    )
+
+    foreach ($s in $states) {
+        Write-Host "-> Enviando update de estado: $s" -ForegroundColor Yellow
+        try {
+            $upd = @{ status = $s }
+            $respUpd = Invoke-JsonPost "$Backend/update_status/$orderId" $upd
+            if ($null -ne $respUpd) {
+                try { Write-Host "  backend response: $($respUpd | ConvertTo-Json -Depth 4)" -ForegroundColor DarkGray } catch { }
+            } else {
+                Write-Warning "  update_status devolvió null o fallo"
+            }
+        }
+        catch {
+            Write-Warning "Error enviando update_status: $($_.Exception.Message)"
+        }
+
+        # Esperar el intervalo antes de comprobar el pedido
+        Start-Sleep -Seconds $SimulateInterval
+
+        # Comprobar /get_order después del update
+        $check = Invoke-JsonGet "$Backend/get_order/$orderId"
+        if ($null -ne $check) {
+            Write-Host "  estado actual en backend: $($check.status)" -ForegroundColor Cyan
+        }
+    }
+
+    Write-Host "Simulación de estados finalizada." -ForegroundColor Magenta
+}
 
 # 2) Polling a /get_order/<order_id>
 $tries = [math]::Ceiling($MaxSeconds / $Interval)

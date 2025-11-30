@@ -1753,10 +1753,29 @@ async function callBackendToCreatePizza() {
     }
 
     const pizzaData = await response.json();
-
-    document.getElementById("pizza-name").textContent = pizzaData.name;
+    document.getElementById("pizza-name").textContent = pizzaData.name || "Pizza Personalizada";
     document.getElementById("pizza-description").textContent =
-      pizzaData.description;
+      pizzaData.description || "Descripción no disponible.";
+
+    // Establecer precio en Bs (Bolivianos). Si el backend devuelve `price`, usarlo;
+    // si no, aplicar un precio por defecto razonable (Bs 15.00)
+    const rawPrice = pizzaData.price;
+    const priceNum = !isNaN(parseFloat(rawPrice)) ? parseFloat(rawPrice) : 15.0;
+
+    // Actualizar el botón de añadir pizza con los datos recibidos
+    try {
+      const addBtn = document.getElementById("btn-add-custom-pizza");
+      if (addBtn) {
+        addBtn.dataset.price = priceNum.toFixed(2);
+        addBtn.dataset.name = pizzaData.name || "Pizza Personalizada";
+        addBtn.dataset.emoji = pizzaData.emoji || "🍕";
+        addBtn.textContent = `Añadir al Carrito (Bs ${priceNum.toFixed(2)})`;
+      }
+    } catch (e) {
+      console.debug("No se pudo actualizar el botón de añadir pizza:", e);
+    }
+
+    // Mostrar resultado
     document.getElementById("pizza-result").classList.remove("hidden");
   } catch (error) {
     console.error("Error al llamar al backend:", error);

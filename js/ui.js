@@ -698,81 +698,88 @@ export async function showOrderTrackingPage(orderId) {
     }, 3500);
   }
 
-  // Actualiza la línea de tiempo estática según el estado normalizado
-  function updateTimeline(normStatus) {
+  // Actualiza la línea de tiempo según la secuencia exacta de estados del backend
+  function updateTimeline(rawStatus) {
     try {
-      const steps = [
-        { id: "step-confirmado", keys: ["confirm", "confirmado"] },
-        {
-          id: "step-preparacion",
-          keys: ["preparacion", "preparando", "enproceso"],
-        },
-        {
-          id: "step-asignado",
-          keys: [
-            "repartidorasignado",
-            "asignado",
-            "aceptado",
-            "repartidoraceptado",
-          ],
-        },
-        {
-          id: "step-camino",
-          keys: [
-            "encamino",
-            "en_camino",
-            "encamino",
-            "encaminar",
-            "salio",
-            "enruta",
-          ],
-        },
-        { id: "step-entregado", keys: ["entregado", "delivered"] },
+      const STATUS_ORDER = [
+        "Pendiente",
+        "Confirmado",
+        "En preparación",
+        "Repartidor Asignado",
+        "En camino",
+        "Entregado",
       ];
 
-      // Determinar el índice del paso actual
-      let current = 0;
-      for (let i = 0; i < steps.length; i++) {
-        const keys = steps[i].keys || [];
-        if (keys.some((k) => normStatus.includes(k))) {
-          current = i;
+      const STEP_IDS = [
+        "step-pendiente",
+        "step-confirmado",
+        "step-preparacion",
+        "step-asignado",
+        "step-camino",
+        "step-entregado",
+      ];
+
+      // Normalizar texto: bajar a minúsculas, remover acentos y espacios/underscores
+      const normalize = (s) =>
+        (s || "")
+          .toString()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[ -]/g, (c) => c) // keep ascii
+          .replace(/[ -]/g, (c) => c)
+          .replace(/\p{Diacritic}/gu, "")
+          .replace(/\s+|_/g, "");
+
+      // Fallback: if normalize with unicode properties fails, use simpler remove-diacritics
+      const safeNormalize = (s) => {
+        try {
+          return normalize(s);
+        } catch (err) {
+          return (s || "")
+            .toString()
+            .toLowerCase()
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/\s+|_/g, "");
+        }
+      };
+
+      const normStatus = safeNormalize(rawStatus);
+
+      // Encontrar índice actual en STATUS_ORDER comparando normalizados
+      let currentIndex = 0;
+      for (let i = 0; i < STATUS_ORDER.length; i++) {
+        if (safeNormalize(STATUS_ORDER[i]) === normStatus) {
+          currentIndex = i;
           break;
         }
       }
 
-      // Aplicar clases
-      steps.forEach((step, idx) => {
-        const el = document.getElementById(step.id);
-        if (!el) return;
-        el.classList.remove("active");
-        el.classList.remove("completed");
-        if (idx < current) el.classList.add("completed");
-        else if (idx === current) el.classList.add("active");
-
-        // Actualizar el icono dentro del círculo:
-        // - Si el paso está completado (idx < current) mostrar ✅
-        // - Si es el paso activo o futuro, mostrar el icono por defecto
-        try {
-          const iconEl = el.querySelector(".step-icon");
-          if (iconEl) {
-            if (idx < current) {
-              iconEl.innerHTML = '<span class="step-check">✅</span>';
-            } else {
-              // iconos por defecto (emojis) para asegurar consistencia sin depender de FontAwesome
-              const defaults = {
-                "step-confirmado": "📩",
-                "step-preparacion": "🔥",
-                "step-asignado": "🛵",
-                "step-camino": "🚚",
-                "step-entregado": "🎁",
-              };
-              iconEl.innerHTML = defaults[step.id] || "";
-            }
+      // Aplicar clases y iconos según índice
+      for (let i = 0; i < STEP_IDS.length; i++) {
+        const el = document.getElementById(STEP_IDS[i]);
+        if (!el) continue;
+        el.classList.remove("active", "completed");
+        const icon = el.querySelector(".step-icon");
+        if (i < currentIndex) {
+          el.classList.add("completed");
+          if (icon) icon.innerHTML = '<span class="step-check">✅</span>';
+        } else if (i === currentIndex) {
+          el.classList.add("active");
+          if (icon) {
+            // Icono específico para paso activo
+            const id = STEP_IDS[i];
+            if (id === "step-preparacion") icon.innerHTML = "🔥";
+            else if (id === "step-asignado") icon.innerHTML = "🛵";
+            else if (id === "step-camino") icon.innerHTML = "🚚";
+            else if (id === "step-pendiente") icon.innerHTML = "⏳";
+            else if (id === "step-confirmado") icon.innerHTML = "📩";
+            else if (id === "step-entregado") icon.innerHTML = "🎁";
           }
-        } catch (err) {
-          // noop
+        } else {
+          // futuro
+          if (icon) icon.innerHTML = "";
         }
-      });
+      }
     } catch (e) {
       /* noop */
     }

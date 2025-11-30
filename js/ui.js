@@ -753,20 +753,20 @@ export async function showOrderTrackingPage(orderId) {
         // - Si el paso está completado (idx < current) mostrar ✅
         // - Si es el paso activo o futuro, mostrar el icono por defecto
         try {
-          const iconEl = el.querySelector('.step-icon');
+          const iconEl = el.querySelector(".step-icon");
           if (iconEl) {
             if (idx < current) {
               iconEl.innerHTML = '<span class="step-check">✅</span>';
             } else {
               // iconos por defecto (emojis) para asegurar consistencia sin depender de FontAwesome
               const defaults = {
-                'step-confirmado': '📩',
-                'step-preparacion': '🔥',
-                'step-asignado': '🛵',
-                'step-camino': '🚚',
-                'step-entregado': '🎁'
+                "step-confirmado": "📩",
+                "step-preparacion": "🔥",
+                "step-asignado": "🛵",
+                "step-camino": "🚚",
+                "step-entregado": "🎁",
               };
-              iconEl.innerHTML = defaults[step.id] || '';
+              iconEl.innerHTML = defaults[step.id] || "";
             }
           }
         } catch (err) {
